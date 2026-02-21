@@ -124,7 +124,14 @@ instance FromResponseBody (StreamBody SseEvent) where
         readNext = do
           chunk <- LowLevelClient.brRead (LowLevelClient.responseBody llres)
           if BS.null chunk
-            then return Nothing
+            then do
+              buf <- readIORef bufRef
+              if T.null buf
+                then return Nothing
+                else
+                  case extractSseEvent buf of
+                    Just (event, rest) -> writeIORef bufRef rest >> return (Just event)
+                    Nothing -> return Nothing
             else do
               modifyIORef bufRef (<> T.decodeUtf8Lenient chunk)
               buf <- readIORef bufRef
