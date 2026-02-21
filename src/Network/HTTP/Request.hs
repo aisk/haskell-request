@@ -13,6 +13,8 @@ module Network.HTTP.Request
     Method (..),
     Request (..),
     Response (..),
+    StreamBody (..),
+    SseEvent (..),
     get,
     delete,
     patch,
@@ -35,6 +37,8 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.CaseInsensitive as CI
+import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
+import Data.Maybe (listToMaybe, mapMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Network.HTTP.Client as LowLevelClient
@@ -47,6 +51,13 @@ type Headers = [Header]
 
 class FromResponseBody a where
   fromResponseBody :: LBS.ByteString -> Either String a
+
+  buildResponse :: LowLevelClient.Request -> LowLevelClient.Manager -> IO (Response a)
+  buildResponse llreq manager = do
+    llres <- LowLevelClient.httpLbs llreq manager
+    case fromLowLevelResponse llres of
+      Right res -> return res
+      Left err -> throwIO (AesonException err)
 
 instance FromResponseBody BS.ByteString where
   fromResponseBody = Right . LBS.toStrict
@@ -62,6 +73,65 @@ instance FromResponseBody String where
 
 instance {-# OVERLAPPABLE #-} (FromJSON a) => FromResponseBody a where
   fromResponseBody = eitherDecode
+
+data StreamBody a = StreamBody
+  { readNext :: IO (Maybe a),
+    closeStream :: IO ()
+  }
+
+data SseEvent = SseEvent
+  { sseData :: T.Text,
+    sseType :: Maybe T.Text,
+    sseId :: Maybe T.Text
+  }
+  deriving (Show)
+
+extractSseEvent :: T.Text -> Maybe (SseEvent, T.Text)
+extractSseEvent buf =
+  case T.breakOn "\n\n" buf of
+    (_, rest) | T.null rest -> Nothing
+    (block, rest) ->
+      let remaining = T.drop 2 rest
+          ls = T.lines block
+          getData l = if "data: " `T.isPrefixOf` l then Just (T.drop 6 l) else Nothing
+          getType l = if "event: " `T.isPrefixOf` l then Just (T.drop 7 l) else Nothing
+          getId l = if "id: " `T.isPrefixOf` l then Just (T.drop 4 l) else Nothing
+          dataVal = T.intercalate "\n" . mapMaybe getData $ ls
+          typeVal = listToMaybe . mapMaybe getType $ ls
+          idVal = listToMaybe . mapMaybe getId $ ls
+       in Just (SseEvent dataVal typeVal idVal, remaining)
+
+instance FromResponseBody (StreamBody BS.ByteString) where
+  fromResponseBody _ = Left "StreamBody must be built via buildResponse"
+
+  buildResponse llreq manager = do
+    llres <- LowLevelClient.responseOpen llreq manager
+    let status = LowLevelStatus.statusCode . LowLevelClient.responseStatus $ llres
+        hdrs = map (\(k, v) -> (CI.original k, v)) (LowLevelClient.responseHeaders llres)
+        readNext = do
+          chunk <- LowLevelClient.brRead (LowLevelClient.responseBody llres)
+          return $ if BS.null chunk then Nothing else Just chunk
+    return $ Response status hdrs (StreamBody readNext (LowLevelClient.responseClose llres))
+
+instance FromResponseBody (StreamBody SseEvent) where
+  fromResponseBody _ = Left "StreamBody must be built via buildResponse"
+
+  buildResponse llreq manager = do
+    llres <- LowLevelClient.responseOpen llreq manager
+    bufRef <- newIORef ""
+    let status = LowLevelStatus.statusCode . LowLevelClient.responseStatus $ llres
+        hdrs = map (\(k, v) -> (CI.original k, v)) (LowLevelClient.responseHeaders llres)
+        readNext = do
+          chunk <- LowLevelClient.brRead (LowLevelClient.responseBody llres)
+          if BS.null chunk
+            then return Nothing
+            else do
+              modifyIORef bufRef (<> T.decodeUtf8Lenient chunk)
+              buf <- readIORef bufRef
+              case extractSseEvent buf of
+                Just (event, rest) -> writeIORef bufRef rest >> return (Just event)
+                Nothing -> readNext
+    return $ Response status hdrs (StreamBody readNext (LowLevelClient.responseClose llres))
 
 class ToRequestBody a where
   toRequestBody :: a -> BS.ByteString
@@ -175,10 +245,7 @@ send :: (ToRequestBody a, FromResponseBody b) => Request a -> IO (Response b)
 send req = do
   manager <- LowLevelTLSClient.getGlobalManager
   llreq <- toLowlevelRequest req
-  llres <- LowLevelClient.httpLbs llreq manager
-  case fromLowLevelResponse llres of
-    Right res -> return res
-    Left err -> throwIO $ AesonException err
+  buildResponse llreq manager
 
 get :: (FromResponseBody a) => String -> IO (Response a)
 get url =

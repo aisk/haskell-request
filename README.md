@@ -179,6 +179,71 @@ res <- send req
 print $ responseStatus res
 ```
 
+## Streaming Support
+
+For large responses or real-time data, you can stream the response body instead of buffering it all in memory.
+
+### Raw Byte Chunks
+
+Use `StreamBody BS.ByteString` to receive the response body as a stream of raw byte chunks:
+
+```haskell
+import Network.HTTP.Request
+import qualified Data.ByteString as BS
+
+main :: IO ()
+main = do
+  let req = Request GET "https://example.com/large-file" [] (Nothing :: Maybe BS.ByteString)
+  resp <- send req :: IO (Response (StreamBody BS.ByteString))
+  print resp.status  -- 200
+
+  let loop = do
+        mChunk <- resp.body.readNext
+        case mChunk of
+          Nothing    -> return ()          -- stream finished
+          Just chunk -> do
+            BS.putStr chunk
+            loop
+  loop
+  resp.body.closeStream
+```
+
+### SSE (Server-Sent Events)
+
+Use `StreamBody SseEvent` to automatically parse an SSE stream. Each call to `readNext` returns the next complete event:
+
+```haskell
+import Network.HTTP.Request
+import qualified Data.Text.IO as T
+
+data SseEvent = SseEvent
+  { sseData :: T.Text       -- content of the "data:" field
+  , sseType :: Maybe T.Text -- content of the "event:" field
+  , sseId   :: Maybe T.Text -- content of the "id:" field
+  }
+
+main :: IO ()
+main = do
+  let req = Request GET "https://example.com/events" [] (Nothing :: Maybe BS.ByteString)
+  resp <- send req :: IO (Response (StreamBody SseEvent))
+  print resp.status  -- 200
+
+  let loop = do
+        mEvent <- resp.body.readNext
+        case mEvent of
+          Nothing    -> return ()          -- stream finished
+          Just event -> do
+            T.putStrLn event.sseData
+            loop
+  loop
+  resp.body.closeStream
+```
+
+`StreamBody` has two fields:
+
+- `readNext :: IO (Maybe a)` — reads the next chunk or event; returns `Nothing` when the stream ends
+- `closeStream :: IO ()` — closes the underlying connection
+
 ## API Documents
 
 See the hackage page: http://hackage.haskell.org/package/request/docs/Network-HTTP-Request.html

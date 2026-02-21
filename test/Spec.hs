@@ -102,3 +102,21 @@ main = hspec $ do
       response <- post "https://postman-echo.com/post" (Greeting "Hello!") :: IO (Response String)
       responseStatus response `shouldBe` 200
       responseBody response `shouldSatisfy` isInfixOf "application/json"
+
+    it "should stream response body as raw byte chunks" $ do
+      let req = Request GET "http://example.com" [] (Nothing :: Maybe BS.ByteString)
+      resp <- send req :: IO (Response (StreamBody BS.ByteString))
+      resp.status `shouldBe` 200
+      mChunk <- resp.body.readNext
+      resp.body.closeStream
+      mChunk `shouldSatisfy` (/= Nothing)
+
+    it "should parse and stream SSE events" $ do
+      let req = Request GET "https://sse.dev/test" [] (Nothing :: Maybe BS.ByteString)
+      resp <- send req :: IO (Response (StreamBody SseEvent))
+      resp.status `shouldBe` 200
+      mEvent <- resp.body.readNext
+      resp.body.closeStream
+      case mEvent of
+        Nothing -> expectationFailure "Expected at least one SSE event from the stream"
+        Just _ -> return ()
