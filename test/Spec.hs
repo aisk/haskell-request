@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE LambdaCase  #-}
@@ -31,6 +32,8 @@ instance ToJSON Greeting
 main :: IO ()
 main = hspec $ do
   describe "Network.HTTP.Request" $ do
+    let defaultUserAgent = "haskell-request/" <> VERSION_request
+
     it "should fetch example.com and return 200 OK" $ do
       response <- get "http://example.com" :: IO (Response String)
       responseStatus response `shouldBe` 200
@@ -102,6 +105,19 @@ main = hspec $ do
       response <- post "https://postman-echo.com/post" (Greeting "Hello!") :: IO (Response String)
       responseStatus response `shouldBe` 200
       responseBody response `shouldSatisfy` isInfixOf "application/json"
+
+    it "should add default User-Agent when request header is missing" $ do
+      response <- send (Request GET "https://postman-echo.com/get" [] (Nothing :: Maybe BS.ByteString)) :: IO (Response String)
+      responseStatus response `shouldBe` 200
+      responseBody response `shouldSatisfy` isInfixOf defaultUserAgent
+
+    it "should not override user provided User-Agent" $ do
+      let customUserAgent = "custom-user-agent-for-test"
+      let req = Request GET "https://postman-echo.com/get" [("User-Agent", T.encodeUtf8 $ T.pack customUserAgent)] (Nothing :: Maybe BS.ByteString)
+      response <- send req :: IO (Response String)
+      responseStatus response `shouldBe` 200
+      responseBody response `shouldSatisfy` isInfixOf customUserAgent
+      responseBody response `shouldSatisfy` not . isInfixOf defaultUserAgent
 
     it "should stream response body as raw byte chunks" $ do
       let req = Request GET "http://example.com" [] (Nothing :: Maybe BS.ByteString)

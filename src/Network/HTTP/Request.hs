@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DuplicateRecordFields #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedRecordDot #-}
@@ -203,12 +204,18 @@ toLowlevelRequest req = do
   initReq <- LowLevelClient.parseRequest req.url
   let autoContentType = req.body >>= requestContentType
       hasContentType = any (\(k, _) -> k == "Content-Type") req.headers
-      extraHeaders = maybe [] (\c -> [("Content-Type", c)]) $
+      hasUserAgent = any (\(k, _) -> CI.mk k == CI.mk ("User-Agent" :: BS.ByteString)) req.headers
+      defaultUserAgent = C.pack $ "haskell-request/" <> VERSION_request
+      extraContentType = maybe [] (\c -> [("Content-Type", c)]) $
         if hasContentType then Nothing else autoContentType
+      extraUserAgent =
+        if hasUserAgent
+          then []
+          else [("User-Agent", defaultUserAgent)]
   return $
     initReq
       { LowLevelClient.method = C.pack . show $ req.method,
-        LowLevelClient.requestHeaders = map (\(k, v) -> (CI.mk k, v)) (req.headers ++ extraHeaders),
+        LowLevelClient.requestHeaders = map (\(k, v) -> (CI.mk k, v)) (req.headers ++ extraContentType ++ extraUserAgent),
         LowLevelClient.requestBody = maybe mempty (LowLevelClient.RequestBodyBS . toRequestBody) req.body
       }
 
