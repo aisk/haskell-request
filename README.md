@@ -30,7 +30,7 @@ resp <- get "https://api.leancloud.cn/1.1/date"
 print resp.status        -- 200
 
 -- Or construct a Request manually
-let req = Request { method = GET, url = "https://api.leancloud.cn/1.1/date", headers = [], body = (Nothing :: Maybe BS.ByteString) }
+let req = Request { method = GET, url = "https://api.leancloud.cn/1.1/date", headers = [], body = () }
 
 -- Response with ByteString body
 responseBS <- send req :: IO (Response BS.ByteString)
@@ -55,12 +55,13 @@ data Request a = Request
   { method  :: Method
   , url     :: String
   , headers :: Headers
-  , body    :: Maybe a
+  , body    :: a
   } deriving (Show)
 ```
 
 Built-in `ToRequestBody` instances and their inferred `Content-Type`:
 
+- `()` → empty body, no Content-Type
 - `ByteString` / lazy `ByteString` / `Text` / `String` → `text/plain; charset=utf-8`
 - Any type with a `ToJSON` instance → auto JSON encoding + `application/json`
 
@@ -68,10 +69,10 @@ The `Content-Type` is automatically inferred from the body type. You can overrid
 
 ```haskell
 -- Content-Type is auto-inferred from body type
-send $ Request POST url [] (Just body)
+send $ Request POST url [] body
 
 -- Or override Content-Type manually
-send $ Request POST url [("Content-Type", "text/xml")] (Just xmlBytes)
+send $ Request POST url [("Content-Type", "text/xml")] xmlBytes
 ```
 
 ### Response
@@ -164,7 +165,7 @@ These shortcuts' definitions are simple and direct. You are encouraged to add yo
 
 If you prefer not to use the language extensions, you can still use the library with the traditional syntax:
 
-- Create requests using positional arguments: `Request GET "url" [] (Nothing :: Maybe BS.ByteString)`
+- Create requests using positional arguments: `Request GET "url" [] ()`
 - Use prefixed accessor functions: `responseStatus response`, `responseHeaders response`, etc.
 
 ```haskell
@@ -172,7 +173,7 @@ import Network.HTTP.Request
 import qualified Data.ByteString as BS
 
 -- Construct a Request using positional arguments
-let req = Request GET "https://api.leancloud.cn/1.1/date" [] (Nothing :: Maybe BS.ByteString)
+let req = Request GET "https://api.leancloud.cn/1.1/date" [] ()
 -- Send it
 res <- send req
 -- Access the fields using prefixed accessor functions
@@ -193,7 +194,7 @@ import qualified Data.ByteString as BS
 
 main :: IO ()
 main = do
-  let req = Request GET "https://example.com/large-file" [] (Nothing :: Maybe BS.ByteString)
+  let req = Request GET "https://example.com/large-file" [] ()
   resp <- send req :: IO (Response (StreamBody BS.ByteString))
   print resp.status  -- 200
 
@@ -224,7 +225,7 @@ data SseEvent = SseEvent
 
 main :: IO ()
 main = do
-  let req = Request GET "https://example.com/events" [] (Nothing :: Maybe BS.ByteString)
+  let req = Request GET "https://example.com/events" [] ()
   resp <- send req :: IO (Response (StreamBody SseEvent))
   print resp.status  -- 200
 

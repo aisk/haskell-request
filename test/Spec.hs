@@ -39,7 +39,7 @@ main = hspec $ do
       responseStatus response `shouldBe` 200
 
     it "should send a request to example.com and return 200 OK" $ do
-      response <- send (Request GET "http://example.com" [] (Nothing :: Maybe BS.ByteString)) :: IO (Response String)
+      response <- send (Request GET "http://example.com" [] ()) :: IO (Response String)
       responseStatus response `shouldBe` 200
 
     it "should post to postman-echo.com/post and return 200 OK" $ do
@@ -55,19 +55,19 @@ main = hspec $ do
       responseStatus response `shouldBe` 200
 
     it "should use dot record syntax to create and access request/response" $ do
-      let req = Request { method = GET, url = "http://example.com", headers = [("User-Agent", "Haskell-Request")], body = (Nothing :: Maybe BS.ByteString) }
+      let req = Request { method = GET, url = "http://example.com", headers = [("User-Agent", "Haskell-Request")], body = () }
       response <- send req :: IO (Response String)
       response.status `shouldBe` 200
       response.headers `shouldSatisfy` (not . null)
 
     it "should access response body with different types" $ do
       -- Test with ByteString body
-      let req1 = Request { method = GET, url = "http://example.com", headers = [], body = (Nothing :: Maybe BS.ByteString) }
+      let req1 = Request { method = GET, url = "http://example.com", headers = [], body = () }
       response1 <- send req1 :: IO (Response BS.ByteString)
       BS.length response1.body `shouldSatisfy` (> 0)
 
       -- Test with String body
-      let req2 = Request { method = GET, url = "http://example.com", headers = [], body = (Nothing :: Maybe BS.ByteString) }
+      let req2 = Request { method = GET, url = "http://example.com", headers = [], body = () }
       response2 <- send req2 :: IO (Response String)
       not (null response2.body) `shouldBe` True
 
@@ -77,7 +77,7 @@ main = hspec $ do
             { method = POST
             , url = "https://postman-echo.com/post"
             , headers = [("Content-Type", "application/json; charset=utf-8")]
-            , body = Just (T.encodeUtf8 $ T.pack msg)
+            , body = T.encodeUtf8 $ T.pack msg
             }
       response <- send req
       responseStatus response `shouldBe` 200
@@ -89,7 +89,7 @@ main = hspec $ do
             { method = POST
             , url = "https://postman-echo.com/post"
             , headers = [("Content-Type", "application/json; charset=utf-8")]
-            , body = Just (T.encodeUtf8 $ T.pack msg)
+            , body = T.encodeUtf8 $ T.pack msg
             }
       response <- send req
       responseStatus response `shouldBe` 200
@@ -107,20 +107,20 @@ main = hspec $ do
       responseBody response `shouldSatisfy` isInfixOf "application/json"
 
     it "should add default User-Agent when request header is missing" $ do
-      response <- send (Request GET "https://postman-echo.com/get" [] (Nothing :: Maybe BS.ByteString)) :: IO (Response String)
+      response <- send (Request GET "https://postman-echo.com/get" [] ()) :: IO (Response String)
       responseStatus response `shouldBe` 200
       responseBody response `shouldSatisfy` isInfixOf defaultUserAgent
 
     it "should not override user provided User-Agent" $ do
       let customUserAgent = "custom-user-agent-for-test"
-      let req = Request GET "https://postman-echo.com/get" [("User-Agent", T.encodeUtf8 $ T.pack customUserAgent)] (Nothing :: Maybe BS.ByteString)
+      let req = Request GET "https://postman-echo.com/get" [("User-Agent", T.encodeUtf8 $ T.pack customUserAgent)] ()
       response <- send req :: IO (Response String)
       responseStatus response `shouldBe` 200
       responseBody response `shouldSatisfy` isInfixOf customUserAgent
       responseBody response `shouldSatisfy` not . isInfixOf defaultUserAgent
 
     it "should stream response body as raw byte chunks" $ do
-      let req = Request GET "http://example.com" [] (Nothing :: Maybe BS.ByteString)
+      let req = Request GET "http://example.com" [] ()
       resp <- send req :: IO (Response (StreamBody BS.ByteString))
       resp.status `shouldBe` 200
       mChunk <- resp.body.readNext
@@ -128,7 +128,7 @@ main = hspec $ do
       mChunk `shouldSatisfy` (/= Nothing)
 
     it "should parse and stream SSE events" $ do
-      let req = Request GET "https://sse.dev/test" [] (Nothing :: Maybe BS.ByteString)
+      let req = Request GET "https://sse.dev/test" [] ()
       resp <- send req :: IO (Response (StreamBody SseEvent))
       resp.status `shouldBe` 200
       mEvent <- resp.body.readNext

@@ -166,6 +166,10 @@ instance {-# OVERLAPPABLE #-} (ToJSON a) => ToRequestBody a where
   toRequestBody = LBS.toStrict . encode
   requestContentType _ = Just "application/json"
 
+instance ToRequestBody () where
+  toRequestBody () = BS.empty
+  requestContentType () = Nothing
+
 data Method
   = DELETE
   | GET
@@ -182,7 +186,7 @@ data Request a = Request
   { method :: Method,
     url :: String,
     headers :: Headers,
-    body :: Maybe a
+    body :: a
   }
   deriving (Show)
 
@@ -196,13 +200,13 @@ requestUrl req = req.url
 requestHeaders :: Request a -> Headers
 requestHeaders req = req.headers
 
-requestBody :: Request a -> Maybe a
+requestBody :: Request a -> a
 requestBody req = req.body
 
 toLowlevelRequest :: (ToRequestBody a) => Request a -> IO LowLevelClient.Request
 toLowlevelRequest req = do
   initReq <- LowLevelClient.parseRequest req.url
-  let autoContentType = req.body >>= requestContentType
+  let autoContentType = requestContentType req.body
       hasContentType = any (\(k, _) -> k == "Content-Type") req.headers
       hasUserAgent = any (\(k, _) -> CI.mk k == CI.mk ("User-Agent" :: BS.ByteString)) req.headers
       defaultUserAgent = C.pack $ "haskell-request/" <> VERSION_request
@@ -216,7 +220,7 @@ toLowlevelRequest req = do
     initReq
       { LowLevelClient.method = C.pack . show $ req.method,
         LowLevelClient.requestHeaders = map (\(k, v) -> (CI.mk k, v)) (req.headers ++ extraContentType ++ extraUserAgent),
-        LowLevelClient.requestBody = maybe mempty (LowLevelClient.RequestBodyBS . toRequestBody) req.body
+        LowLevelClient.requestBody = LowLevelClient.RequestBodyBS (toRequestBody req.body)
       }
 
 data Response a = Response
@@ -263,20 +267,20 @@ send req = do
 
 get :: (FromResponseBody a) => String -> IO (Response a)
 get url =
-  send $ Request GET url [] (Nothing :: Maybe BS.ByteString)
+  send $ Request GET url [] ()
 
 delete :: (FromResponseBody a) => String -> IO (Response a)
 delete url =
-  send $ Request DELETE url [] (Nothing :: Maybe BS.ByteString)
+  send $ Request DELETE url [] ()
 
 post :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b)
 post url body =
-  send $ Request POST url [] (Just body)
+  send $ Request POST url [] body
 
 put :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b)
 put url body =
-  send $ Request PUT url [] (Just body)
+  send $ Request PUT url [] body
 
 patch :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b)
 patch url body =
-  send $ Request PATCH url [] (Just body)
+  send $ Request PATCH url [] body
