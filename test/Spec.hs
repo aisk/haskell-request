@@ -119,6 +119,11 @@ main = hspec $ do
       responseBody response `shouldSatisfy` isInfixOf customUserAgent
       responseBody response `shouldSatisfy` not . isInfixOf defaultUserAgent
 
+    it "should send with a user-provided manager" $ do
+      mgr <- newManager
+      response <- sendWith mgr (Request GET "http://example.com" [] ()) :: IO (Response String)
+      responseStatus response `shouldBe` 200
+
     it "should stream response body as raw byte chunks" $ do
       let req = Request GET "http://example.com" [] ()
       resp <- send req :: IO (Response (StreamBody BS.ByteString))

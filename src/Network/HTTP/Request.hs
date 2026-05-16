@@ -11,6 +11,7 @@ module Network.HTTP.Request
     Headers,
     FromResponseBody (..),
     ToRequestBody (..),
+    Manager,
     Method (..),
     Request (..),
     Response (..),
@@ -21,7 +22,9 @@ module Network.HTTP.Request
     patch,
     post,
     put,
+    newManager,
     send,
+    sendWith,
     requestMethod,
     requestUrl,
     requestHeaders,
@@ -42,6 +45,7 @@ import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
 import Data.Maybe (listToMaybe, mapMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import Network.HTTP.Client (Manager)
 import qualified Network.HTTP.Client as LowLevelClient
 import qualified Network.HTTP.Client.TLS as LowLevelTLSClient
 import qualified Network.HTTP.Types.Status as LowLevelStatus
@@ -293,11 +297,18 @@ fromLowLevelResponse res =
               body
         Left err -> Left err
 
+newManager :: IO Manager
+newManager = LowLevelTLSClient.newTlsManager
+
+sendWith :: (ToRequestBody a, FromResponseBody b) => Manager -> Request a -> IO (Response b)
+sendWith manager req = do
+  llreq <- toLowlevelRequest req
+  buildResponse llreq manager
+
 send :: (ToRequestBody a, FromResponseBody b) => Request a -> IO (Response b)
 send req = do
   manager <- LowLevelTLSClient.getGlobalManager
-  llreq <- toLowlevelRequest req
-  buildResponse llreq manager
+  sendWith manager req
 
 get :: (FromResponseBody a) => String -> IO (Response a)
 get url =

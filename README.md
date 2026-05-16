@@ -180,6 +180,29 @@ res <- send req
 print $ responseStatus res
 ```
 
+## Custom Connection Manager
+
+By default, `send` uses the `http-client` global TLS manager. For most applications this is fine, you get connection pooling for free with no setup. If you want to isolate your library's connection pool from the rest of the program, keep a long-lived manager in a service, or configure proxies and custom TLS settings, create your own manager and pass it to `sendWith`:
+
+```haskell
+import Network.HTTP.Request
+
+main :: IO ()
+main = do
+  mgr <- newManager
+  resp <- sendWith mgr (Request GET "https://api.example.com/things" [] ()) :: IO (Response String)
+  print resp.status
+```
+
+The two new pieces of API:
+
+```haskell
+newManager :: IO Manager
+sendWith   :: (ToRequestBody a, FromResponseBody b) => Manager -> Request a -> IO (Response b)
+```
+
+`Manager` is the same type as `Network.HTTP.Client.Manager`, re-exported for convenience. For deeper configuration (`ManagerSettings`, custom proxies, certificate pinning, etc.) import `Network.HTTP.Client` / `Network.HTTP.Client.TLS` directly and build a `Manager` however you need. `sendWith` accepts it as-is.
+
 ## Streaming Support
 
 For large responses or real-time data, you can stream the response body instead of buffering it all in memory.
