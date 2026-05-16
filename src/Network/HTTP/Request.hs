@@ -1,9 +1,9 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Network.HTTP.Request
@@ -92,11 +92,14 @@ data SseEvent = SseEvent
   deriving (Show)
 
 findEventSep :: BS.ByteString -> Maybe (Int, Int)
-findEventSep bs = foldr earlier Nothing
-  [ tryFind "\r\n\r\n" 4
-  , tryFind "\n\n" 2
-  , tryFind "\r\r" 2
-  ]
+findEventSep bs =
+  foldr
+    earlier
+    Nothing
+    [ tryFind "\r\n\r\n" 4,
+      tryFind "\n\n" 2,
+      tryFind "\r\r" 2
+    ]
   where
     tryFind pat sepLen =
       let (h, t) = BS.breakSubstring pat bs
@@ -248,8 +251,9 @@ toLowlevelRequest req = do
       hasContentType = any (\(k, _) -> k == "Content-Type") req.headers
       hasUserAgent = any (\(k, _) -> CI.mk k == CI.mk ("User-Agent" :: BS.ByteString)) req.headers
       defaultUserAgent = C.pack $ "haskell-request/" <> VERSION_request
-      extraContentType = maybe [] (\c -> [("Content-Type", c)]) $
-        if hasContentType then Nothing else autoContentType
+      extraContentType =
+        maybe [] (\c -> [("Content-Type", c)]) $
+          if hasContentType then Nothing else autoContentType
       extraUserAgent =
         if hasUserAgent
           then []
