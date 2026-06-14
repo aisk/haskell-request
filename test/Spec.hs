@@ -29,6 +29,16 @@ data Greeting = Greeting
 
 instance ToJSON Greeting
 
+data Login = Login
+  { username :: T.Text
+  , password :: T.Text
+  } deriving (Show)
+
+instance ToForm Login where
+  toForm l = [ ("username", T.encodeUtf8 l.username)
+             , ("password", T.encodeUtf8 l.password)
+             ]
+
 main :: IO ()
 main = hspec $ do
   describe "Network.HTTP.Request" $ do
@@ -105,6 +115,25 @@ main = hspec $ do
       response <- post "https://postman-echo.com/post" (Greeting "Hello!") :: IO (Response String)
       responseStatus response `shouldBe` 200
       responseBody response `shouldSatisfy` isInfixOf "application/json"
+
+    it "should post url-encoded form from a list" $ do
+      response <- post "https://postman-echo.com/post" (Form [("foo", "bar"), ("baz", "qux")]) :: IO (Response String)
+      responseStatus response `shouldBe` 200
+      responseBody response `shouldSatisfy` isInfixOf "application/x-www-form-urlencoded"
+      responseBody response `shouldSatisfy` isInfixOf "\"foo\":\"bar\""
+      responseBody response `shouldSatisfy` isInfixOf "\"baz\":\"qux\""
+
+    it "should post url-encoded form from a ToForm instance" $ do
+      response <- post "https://postman-echo.com/post" (Form (Login "alice" "s3cret")) :: IO (Response String)
+      responseStatus response `shouldBe` 200
+      responseBody response `shouldSatisfy` isInfixOf "application/x-www-form-urlencoded"
+      responseBody response `shouldSatisfy` isInfixOf "\"username\":\"alice\""
+      responseBody response `shouldSatisfy` isInfixOf "\"password\":\"s3cret\""
+
+    it "should percent-encode form values with special characters" $ do
+      response <- post "https://postman-echo.com/post" (Form [("q", "hello world"), ("lang", "zh-CN")]) :: IO (Response String)
+      responseStatus response `shouldBe` 200
+      responseBody response `shouldSatisfy` isInfixOf "\"q\":\"hello world\""
 
     it "should add default User-Agent when request header is missing" $ do
       response <- send (Request GET "https://postman-echo.com/get" [] ()) :: IO (Response String)

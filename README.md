@@ -64,6 +64,7 @@ Built-in `ToRequestBody` instances and their inferred `Content-Type`:
 - `()` → empty body, no Content-Type
 - `ByteString` / lazy `ByteString` / `Text` / `String` → `text/plain; charset=utf-8`
 - Any type with a `ToJSON` instance → auto JSON encoding + `application/json`
+- `Form a` (where `a` has a `ToForm` instance) → URL-encoded + `application/x-www-form-urlencoded`
 
 The `Content-Type` is automatically inferred from the body type. You can override it by setting the header manually:
 
@@ -146,6 +147,70 @@ main = do
   response <- post "https://httpbin.org/post" (User "Alice") :: IO (Response String)
   print response.status  -- 200
 ```
+
+## Form Support
+
+For `application/x-www-form-urlencoded` requests (login forms, OAuth token endpoints, classic web APIs), wrap your body in the `Form` newtype. The `Content-Type` is set automatically and values are percent-encoded.
+
+### From a list of pairs
+
+```haskell
+import Network.HTTP.Request
+
+main :: IO ()
+main = do
+  response <- post "https://httpbin.org/post"
+                   (Form [("username", "alice"), ("password", "s3cret")])
+              :: IO (Response String)
+  print response.status  -- 200
+  -- Body sent: username=alice&password=s3cret
+```
+
+Values are `ByteString` keys and values. Special characters (spaces, Unicode, reserved chars) are percent-encoded for you:
+
+```haskell
+post "https://api.example.com/search"
+     (Form [("q", "hello world"), ("lang", "zh-CN")])
+-- Body sent: q=hello%20world&lang=zh-CN
+```
+
+### From a custom type
+
+For your own record types, define a `ToForm` instance. This mirrors the `ToJSON` pattern:
+
+```haskell
+import Network.HTTP.Request
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+
+data Login = Login
+  { username :: T.Text
+  , password :: T.Text
+  }
+
+instance ToForm Login where
+  toForm l = [ ("username", T.encodeUtf8 l.username)
+             , ("password", T.encodeUtf8 l.password)
+             ]
+
+main :: IO ()
+main = do
+  response <- post "https://api.example.com/login"
+                   (Form (Login "alice" "s3cret"))
+              :: IO (Response String)
+  print response.status
+```
+
+### The two new pieces of API
+
+```haskell
+class ToForm a where
+  toForm :: a -> [(ByteString, ByteString)]
+
+newtype Form a = Form a
+```
+
+The `Form` newtype is required to disambiguate the form-encoding path from JSON. Without it, a type that has both `ToJSON` and `ToForm` instances would be ambiguous; with it, `post url x` always means JSON and `post url (Form x)` always means form.
 
 ## Shortcuts
 

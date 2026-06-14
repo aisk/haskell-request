@@ -4,6 +4,8 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Network.HTTP.Request
@@ -11,6 +13,8 @@ module Network.HTTP.Request
     Headers,
     FromResponseBody (..),
     ToRequestBody (..),
+    ToForm (..),
+    Form (..),
     Manager,
     Method (..),
     Request (..),
@@ -49,6 +53,7 @@ import Network.HTTP.Client (Manager)
 import qualified Network.HTTP.Client as LowLevelClient
 import qualified Network.HTTP.Client.TLS as LowLevelTLSClient
 import qualified Network.HTTP.Types.Status as LowLevelStatus
+import Network.HTTP.Types.URI (renderSimpleQuery)
 
 type Header = (BS.ByteString, BS.ByteString)
 
@@ -199,6 +204,18 @@ instance {-# OVERLAPPABLE #-} (ToJSON a) => ToRequestBody a where
 instance ToRequestBody () where
   toRequestBody () = BS.empty
   requestContentType () = Nothing
+
+class ToForm a where
+  toForm :: a -> [(BS.ByteString, BS.ByteString)]
+
+instance (k ~ BS.ByteString, v ~ BS.ByteString) => ToForm [(k, v)] where
+  toForm = id
+
+newtype Form a = Form a
+
+instance (ToForm a) => ToRequestBody (Form a) where
+  toRequestBody (Form a) = renderSimpleQuery False (toForm a)
+  requestContentType _ = Just "application/x-www-form-urlencoded"
 
 data Method
   = DELETE
