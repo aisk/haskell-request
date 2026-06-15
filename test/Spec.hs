@@ -16,12 +16,11 @@ import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 
-data Date = Date
-  { __type :: String
-  , iso :: String
+data UUID = UUID
+  { uuid :: String
   } deriving (Show, Generic)
 
-instance FromJSON Date
+instance FromJSON UUID
 
 data Greeting = Greeting
   { message :: String
@@ -106,10 +105,9 @@ main = hspec $ do
       responseBody response `shouldSatisfy` isInfixOf "🌍"
 
     it "should parse JSON response with aeson" $ do
-      response <- get "https://api.leancloud.cn/1.1/date" :: IO (Response Date)
+      response <- get "https://httpbin.org/uuid" :: IO (Response UUID)
       responseStatus response `shouldBe` 200
-      __type (responseBody response) `shouldBe` "Date"
-      iso (responseBody response) `shouldSatisfy` not . null
+      uuid (responseBody response) `shouldSatisfy` not . null
 
     it "should post JSON body with automatic Content-Type" $ do
       response <- post "https://postman-echo.com/post" (Greeting "Hello!") :: IO (Response String)

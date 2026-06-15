@@ -26,11 +26,11 @@ import Network.HTTP.Request
 import qualified Data.ByteString as BS
 
 -- Using shortcuts
-resp <- get "https://api.leancloud.cn/1.1/date"
+resp <- get "https://httpbin.org/uuid"
 print resp.status        -- 200
 
 -- Or construct a Request manually
-let req = Request { method = GET, url = "https://api.leancloud.cn/1.1/date", headers = [], body = () }
+let req = Request { method = GET, url = "https://httpbin.org/uuid", headers = [], body = () }
 
 -- Response with ByteString body
 responseBS <- send req :: IO (Response BS.ByteString)
@@ -111,18 +111,17 @@ import Network.HTTP.Request
 import Data.Aeson (FromJSON)
 import GHC.Generics (Generic)
 
-data Date = Date
-  { __type :: String
-  , iso :: String
+data UUID = UUID
+  { uuid :: String
   } deriving (Show, Generic)
 
-instance FromJSON Date
+instance FromJSON UUID
 
 main :: IO ()
 main = do
-  response <- get "https://api.leancloud.cn/1.1/date" :: IO (Response Date)
+  response <- get "https://httpbin.org/uuid" :: IO (Response UUID)
   print response.status  -- 200
-  print response.body    -- Date { __type = "Date", iso = "..." }
+  print response.body    -- UUID { uuid = "550e8400-e29b-41d4-a716-446655440000" }
 ```
 
 If JSON decoding fails, an `AesonException` will be thrown, which can be caught with `Control.Exception.catch` or `try`.
@@ -238,7 +237,7 @@ import Network.HTTP.Request
 import qualified Data.ByteString as BS
 
 -- Construct a Request using positional arguments
-let req = Request GET "https://api.leancloud.cn/1.1/date" [] ()
+let req = Request GET "https://httpbin.org/uuid" [] ()
 -- Send it
 res <- send req
 -- Access the fields using prefixed accessor functions
