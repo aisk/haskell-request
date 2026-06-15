@@ -160,7 +160,7 @@ main = hspec $ do
       mChunk `shouldSatisfy` (/= Nothing)
 
     it "should parse and stream SSE events" $ do
-      let req = Request GET "https://sse.dev/test" [] ()
+      let req = Request GET "https://stream.wikimedia.org/v2/stream/recentchange" [] ()
       resp <- send req :: IO (Response (StreamBody SseEvent))
       resp.status `shouldBe` 200
       mEvent <- resp.body.readNext
