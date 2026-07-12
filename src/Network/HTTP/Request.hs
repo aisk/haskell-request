@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedRecordDot #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
@@ -19,6 +20,7 @@ module Network.HTTP.Request
     Method (..),
     Request (..),
     Response (..),
+    ResponseBodyException (..),
     StreamBody (..),
     SseEvent (..),
     basicAuth,
@@ -41,7 +43,7 @@ module Network.HTTP.Request
   )
 where
 
-import Control.Exception (throwIO)
+import Control.Exception (Exception, SomeException, throwIO, toException)
 import Data.Aeson (AesonException (..), FromJSON, ToJSON, eitherDecode, encode)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Base64 as Base64
@@ -51,6 +53,7 @@ import qualified Data.CaseInsensitive as CI
 import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
 import Data.List (foldl')
 import Data.Maybe (mapMaybe)
+import Data.Proxy (Proxy (..))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Network.HTTP.Client (Manager)
@@ -63,15 +66,23 @@ type Header = (BS.ByteString, BS.ByteString)
 
 type Headers = [Header]
 
+newtype ResponseBodyException = ResponseBodyException String
+  deriving (Show)
+
+instance Exception ResponseBodyException
+
 class FromResponseBody a where
   fromResponseBody :: LBS.ByteString -> Either String a
+
+  responseBodyException :: proxy a -> String -> SomeException
+  responseBodyException _ = toException . ResponseBodyException
 
   buildResponse :: LowLevelClient.Request -> LowLevelClient.Manager -> IO (Response a)
   buildResponse llreq manager = do
     llres <- LowLevelClient.httpLbs llreq manager
     case fromLowLevelResponse llres of
       Right res -> return res
-      Left err -> throwIO (AesonException err)
+      Left err -> throwIO (responseBodyException (Proxy :: Proxy a) err)
 
 instance FromResponseBody BS.ByteString where
   fromResponseBody = Right . LBS.toStrict
@@ -87,6 +98,7 @@ instance FromResponseBody String where
 
 instance {-# OVERLAPPABLE #-} (FromJSON a) => FromResponseBody a where
   fromResponseBody = eitherDecode
+  responseBodyException _ = toException . AesonException
 
 data StreamBody a = StreamBody
   { readNext :: IO (Maybe a),
