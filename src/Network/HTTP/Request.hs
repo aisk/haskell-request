@@ -101,17 +101,26 @@ findEventSep bs =
   foldr
     earlier
     Nothing
-    [ tryFind "\r\n\r\n" 4,
-      tryFind "\n\n" 2,
-      tryFind "\r\r" 2
+    [ tryFind "\r\n\r\n",
+      tryFind "\r\n\n",
+      tryFind "\r\n\r",
+      tryFind "\n\r\n",
+      tryFind "\n\n",
+      tryFind "\n\r",
+      tryFind "\r\r\n",
+      tryFind "\r\r"
     ]
   where
-    tryFind pat sepLen =
+    tryFind pat =
       let (h, t) = BS.breakSubstring pat bs
-       in if BS.null t then Nothing else Just (BS.length h, BS.length h + sepLen)
+       in if BS.null t then Nothing else Just (BS.length h, BS.length h + BS.length pat)
     earlier a Nothing = a
     earlier Nothing b = b
-    earlier a@(Just (s1, _)) b@(Just (s2, _)) = if s1 <= s2 then a else b
+    earlier a@(Just (s1, e1)) b@(Just (s2, e2))
+      | s1 < s2 = a
+      | s1 > s2 = b
+      | e1 >= e2 = a
+      | otherwise = b
 
 parseSseField :: T.Text -> Maybe (T.Text, T.Text)
 parseSseField line
