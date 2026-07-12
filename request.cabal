@@ -1,5 +1,5 @@
 name:                request
-version:             0.4.1.0
+version:             0.4.2.0
 -- synopsis:
 description:         "HTTP client for haskell, inpired by requests and http-dispatch."
 homepage:            https://github.com/aisk/request#readme
