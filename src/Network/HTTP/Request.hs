@@ -136,16 +136,17 @@ parseSseField line
                 Nothing -> T.drop 1 rest
        in Just (name, value)
 
-parseSseBlock :: BS.ByteString -> SseEvent
+parseSseBlock :: BS.ByteString -> Maybe SseEvent
 parseSseBlock block =
   let txt = T.replace "\r" "\n" . T.replace "\r\n" "\n" $ T.decodeUtf8Lenient block
       ls = T.lines txt
       fields = mapMaybe parseSseField ls
-      dataVal = T.intercalate "\n" [v | (k, v) <- fields, k == "data"]
+      dataFields = [v | (k, v) <- fields, k == "data"]
+      dataVal = T.intercalate "\n" dataFields
       lastField name = foldl' (\current (k, v) -> if k == name then Just v else current) Nothing fields
       typeVal = lastField "event"
       idVal = lastField "id"
-   in SseEvent dataVal typeVal idVal
+   in if null dataFields then Nothing else Just (SseEvent dataVal typeVal idVal)
 
 instance FromResponseBody (StreamBody BS.ByteString) where
   fromResponseBody _ = Left "StreamBody must be built via buildResponse"
@@ -172,7 +173,9 @@ instance FromResponseBody (StreamBody SseEvent) where
           case findEventSep buf of
             Just (blockEnd, afterSep) -> do
               writeIORef bufRef (BS.drop afterSep buf)
-              return $ Just (parseSseBlock (BS.take blockEnd buf))
+              case parseSseBlock (BS.take blockEnd buf) of
+                Just event -> return (Just event)
+                Nothing -> readNext
             Nothing -> do
               chunk <- LowLevelClient.brRead (LowLevelClient.responseBody llres)
               if BS.null chunk
@@ -181,7 +184,7 @@ instance FromResponseBody (StreamBody SseEvent) where
                     then return Nothing
                     else do
                       writeIORef bufRef BS.empty
-                      return $ Just (parseSseBlock buf)
+                      return (parseSseBlock buf)
                 else do
                   modifyIORef bufRef (<> chunk)
                   readNext
