@@ -265,7 +265,7 @@ toLowlevelRequest :: (ToRequestBody a) => Request a -> IO LowLevelClient.Request
 toLowlevelRequest req = do
   initReq <- LowLevelClient.parseRequest req.url
   let autoContentType = requestContentType req.body
-      hasContentType = any (\(k, _) -> k == "Content-Type") req.headers
+      hasContentType = any (\(k, _) -> CI.mk k == CI.mk ("Content-Type" :: BS.ByteString)) req.headers
       hasUserAgent = any (\(k, _) -> CI.mk k == CI.mk ("User-Agent" :: BS.ByteString)) req.headers
       defaultUserAgent = C.pack $ "haskell-request/" <> VERSION_request
       extraContentType =
