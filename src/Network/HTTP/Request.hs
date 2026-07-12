@@ -46,7 +46,8 @@ import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.CaseInsensitive as CI
 import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
-import Data.Maybe (listToMaybe, mapMaybe)
+import Data.List (foldl')
+import Data.Maybe (mapMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import Network.HTTP.Client (Manager)
@@ -141,8 +142,9 @@ parseSseBlock block =
       ls = T.lines txt
       fields = mapMaybe parseSseField ls
       dataVal = T.intercalate "\n" [v | (k, v) <- fields, k == "data"]
-      typeVal = listToMaybe [v | (k, v) <- fields, k == "event"]
-      idVal = listToMaybe [v | (k, v) <- fields, k == "id"]
+      lastField name = foldl' (\current (k, v) -> if k == name then Just v else current) Nothing fields
+      typeVal = lastField "event"
+      idVal = lastField "id"
    in SseEvent dataVal typeVal idVal
 
 instance FromResponseBody (StreamBody BS.ByteString) where
