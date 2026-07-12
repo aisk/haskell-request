@@ -274,11 +274,13 @@ bearerAuth token = setAuthorizationHeader ("Bearer " <> token)
 
 setAuthorizationHeader :: BS.ByteString -> Request a -> Request a
 setAuthorizationHeader value req =
-  req
-    { headers =
-        ("Authorization", value)
-          : filter (\(name, _) -> CI.mk name /= CI.mk ("Authorization" :: BS.ByteString)) req.headers
-    }
+  Request
+    req.method
+    req.url
+    ( ("Authorization", value)
+        : filter (\(name, _) -> CI.mk name /= CI.mk ("Authorization" :: BS.ByteString)) req.headers
+    )
+    req.body
 
 -- Compatibility accessor functions
 requestMethod :: Request a -> Method
