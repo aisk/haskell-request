@@ -26,7 +26,7 @@ import Network.HTTP.Request
 import qualified Data.ByteString as BS
 
 -- Using shortcuts
-resp <- get "https://httpbin.org/uuid"
+resp <- get "https://httpbin.org/uuid" :: IO (Response String)
 print resp.status        -- 200
 
 -- Or construct a Request manually
@@ -231,10 +231,10 @@ Use `basicAuth` or `bearerAuth` to add an `Authorization` header to a request:
 
 ```haskell
 let basicReq = basicAuth "username" "password" (Request GET url [] ())
-basicResponse <- send basicReq
+basicResponse <- send basicReq :: IO (Response String)
 
 let bearerReq = bearerAuth "token" (Request GET url [] ())
-bearerResponse <- send bearerReq
+bearerResponse <- send bearerReq :: IO (Response String)
 ```
 
 Both helpers replace an existing `Authorization` header, regardless of the header name's casing.
@@ -248,12 +248,11 @@ If you prefer not to use the language extensions, you can still use the library 
 
 ```haskell
 import Network.HTTP.Request
-import qualified Data.ByteString as BS
 
 -- Construct a Request using positional arguments
 let req = Request GET "https://httpbin.org/uuid" [] ()
 -- Send it
-res <- send req
+res <- send req :: IO (Response String)
 -- Access the fields using prefixed accessor functions
 print $ responseStatus res
 ```
