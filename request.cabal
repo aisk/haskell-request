@@ -16,6 +16,11 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Network.HTTP.Request
+  other-modules:       Network.HTTP.Request.Internal.Auth
+                     , Network.HTTP.Request.Internal.Body
+                     , Network.HTTP.Request.Internal.Client
+                     , Network.HTTP.Request.Internal.Sse
+                     , Network.HTTP.Request.Internal.Types
   build-depends:       base               >= 4.7 && < 5
                      , aeson              >= 2.0 && < 2.3
                      , base64-bytestring  >= 1.2 && < 1.3
