@@ -225,6 +225,20 @@ patch  :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b
 
 These shortcuts' definitions are simple and direct. You are encouraged to add your own if the built-in does not match your use cases, like add custom headers in every request.
 
+## Authentication
+
+Use `basicAuth` or `bearerAuth` to add an `Authorization` header to a request:
+
+```haskell
+let basicReq = basicAuth "username" "password" (Request GET url [] ())
+basicResponse <- send basicReq
+
+let bearerReq = bearerAuth "token" (Request GET url [] ())
+bearerResponse <- send bearerReq
+```
+
+Both helpers replace an existing `Authorization` header, regardless of the header name's casing.
+
 ## Without Language Extensions
 
 If you prefer not to use the language extensions, you can still use the library with the traditional syntax:

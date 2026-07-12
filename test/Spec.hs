@@ -146,6 +146,14 @@ main = hspec $ do
       responseBody response `shouldSatisfy` isInfixOf customUserAgent
       responseBody response `shouldSatisfy` not . isInfixOf defaultUserAgent
 
+    it "should add a Basic Authorization header" $ do
+      let req = basicAuth "alice" "s3cret" (Request GET "http://example.com" [] ())
+      requestHeaders req `shouldBe` [("Authorization", "Basic YWxpY2U6czNjcmV0")]
+
+    it "should replace an existing Authorization header with a bearer token" $ do
+      let req = bearerAuth "new-token" (Request GET "http://example.com" [("authorization", "old-token")] ())
+      requestHeaders req `shouldBe` [("Authorization", "Bearer new-token")]
+
     it "should send with a user-provided manager" $ do
       mgr <- newManager
       response <- sendWith mgr (Request GET "http://example.com" [] ()) :: IO (Response String)

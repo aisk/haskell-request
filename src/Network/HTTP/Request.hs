@@ -21,6 +21,8 @@ module Network.HTTP.Request
     Response (..),
     StreamBody (..),
     SseEvent (..),
+    basicAuth,
+    bearerAuth,
     get,
     delete,
     patch,
@@ -42,6 +44,7 @@ where
 import Control.Exception (throwIO)
 import Data.Aeson (AesonException (..), FromJSON, ToJSON, eitherDecode, encode)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base64 as Base64
 import qualified Data.ByteString.Char8 as C
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.CaseInsensitive as CI
@@ -261,6 +264,21 @@ data Request a = Request
     body :: a
   }
   deriving (Show)
+
+basicAuth :: BS.ByteString -> BS.ByteString -> Request a -> Request a
+basicAuth username password =
+  setAuthorizationHeader ("Basic " <> Base64.encode (username <> ":" <> password))
+
+bearerAuth :: BS.ByteString -> Request a -> Request a
+bearerAuth token = setAuthorizationHeader ("Bearer " <> token)
+
+setAuthorizationHeader :: BS.ByteString -> Request a -> Request a
+setAuthorizationHeader value req =
+  req
+    { headers =
+        ("Authorization", value)
+          : filter (\(name, _) -> CI.mk name /= CI.mk ("Authorization" :: BS.ByteString)) req.headers
+    }
 
 -- Compatibility accessor functions
 requestMethod :: Request a -> Method
