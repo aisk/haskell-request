@@ -239,6 +239,23 @@ bearerResponse <- send bearerReq :: IO (Response String)
 
 Both helpers replace an existing `Authorization` header, regardless of the header name's casing.
 
+## Checking Response Status
+
+A response with a 4xx or 5xx status is returned as-is. If you prefer to treat error statuses as exceptions, like `raise_for_status` in Python requests, pass the response through `raiseForStatus`:
+
+```haskell
+resp <- get "https://httpbin.org/status/404" >>= raiseForStatus :: IO (Response String)
+-- throws: StatusException 404 [("Content-Type", ...), ...]
+```
+
+`raiseForStatus` returns the response unchanged when the status is below 400, and throws a `StatusException` carrying the status code and the response headers otherwise:
+
+```haskell
+data StatusException = StatusException Int Headers
+
+raiseForStatus :: Response a -> IO (Response a)
+```
+
 ## Without Language Extensions
 
 If you prefer not to use the language extensions, you can still use the library with the traditional syntax:

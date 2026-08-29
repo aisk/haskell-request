@@ -154,6 +154,23 @@ main = hspec $ do
       let req = bearerAuth "new-token" (Request GET "http://example.com" [("authorization", "old-token")] ())
       requestHeaders req `shouldBe` [("Authorization", "Bearer new-token")]
 
+    it "should return the response unchanged when raiseForStatus sees a 2xx status" $ do
+      let resp = Response { status = 200, headers = [("X-Test", "1")], body = "ok" :: String }
+      checked <- raiseForStatus resp
+      checked.status `shouldBe` 200
+      checked.body `shouldBe` "ok"
+
+    it "should throw StatusException from raiseForStatus on a 4xx status" $ do
+      let resp = Response { status = 404, headers = [("X-Test", "1")], body = () }
+      raiseForStatus resp `shouldThrow` \(StatusException code hdrs) ->
+        code == 404 && hdrs == [("X-Test", "1")]
+
+    it "should throw StatusException for an error status from a real server" $ do
+      let sendAndRaise = do
+            resp <- get "https://postman-echo.com/status/500" :: IO (Response String)
+            raiseForStatus resp
+      sendAndRaise `shouldThrow` \(StatusException code _) -> code == 500
+
     it "should send with a user-provided manager" $ do
       mgr <- newManager
       response <- sendWith mgr (Request GET "http://example.com" [] ()) :: IO (Response String)

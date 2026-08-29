@@ -12,6 +12,7 @@ module Network.HTTP.Request
     Request (..),
     Response (..),
     ResponseBodyException (..),
+    StatusException (..),
     StreamBody (..),
     SseEvent (..),
     basicAuth,
@@ -22,6 +23,7 @@ module Network.HTTP.Request
     post,
     put,
     newManager,
+    raiseForStatus,
     send,
     sendWith,
     requestMethod,
@@ -52,6 +54,10 @@ import Network.HTTP.Request.Internal.Client
     put,
     send,
     sendWith,
+  )
+import Network.HTTP.Request.Internal.Status
+  ( StatusException (..),
+    raiseForStatus,
   )
 import Network.HTTP.Request.Internal.Types
   ( Header,
