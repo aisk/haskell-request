@@ -227,17 +227,12 @@ These shortcuts' definitions are simple and direct. You are encouraged to add yo
 
 ## Authentication
 
-Use `basicAuth` or `bearerAuth` to add an `Authorization` header to a request:
+`basicAuth` builds the value of a Basic `Authorization` header. Put it in the request's header list yourself:
 
 ```haskell
-let basicReq = basicAuth "username" "password" (Request GET url [] ())
-basicResponse <- send basicReq :: IO (Response String)
-
-let bearerReq = bearerAuth "token" (Request GET url [] ())
-bearerResponse <- send bearerReq :: IO (Response String)
+let req = Request GET url [("Authorization", basicAuth "username" "password")] ()
+response <- send req :: IO (Response String)
 ```
-
-Both helpers replace an existing `Authorization` header, regardless of the header name's casing.
 
 ## Checking Response Status
 

@@ -16,7 +16,6 @@ module Network.HTTP.Request
     StreamBody (..),
     SseEvent (..),
     basicAuth,
-    bearerAuth,
     get,
     delete,
     patch,
@@ -36,7 +35,7 @@ module Network.HTTP.Request
   )
 where
 
-import Network.HTTP.Request.Internal.Auth (basicAuth, bearerAuth)
+import Network.HTTP.Request.Internal.Auth (basicAuth)
 import Network.HTTP.Request.Internal.Body
   ( Form (..),
     FromResponseBody (..),
