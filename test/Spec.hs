@@ -8,7 +8,7 @@
 module Main where
 
 import Data.Aeson (AesonException (..), FromJSON, ToJSON)
-import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
+import Data.IORef (IORef, atomicModifyIORef', modifyIORef', newIORef, readIORef, writeIORef)
 import Data.List (isInfixOf)
 import GHC.Generics (Generic)
 import Data.List (mapAccumL)
@@ -16,8 +16,10 @@ import Network.HTTP.Request
 import Network.HTTP.Request.Internal.Sse (feedSse, newSseParser)
 import Test.Hspec
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
+import qualified Network.HTTP.Client as HC
 
 data UUID = UUID
   { uuid :: String
@@ -54,6 +56,27 @@ fakeResponse hdrs chunks = do
 
 decodeFake :: (FromResponse a) => Headers -> [BS.ByteString] -> IO a
 decodeFake hdrs chunks = fakeResponse hdrs chunks >>= fromResponse . fst
+
+-- | A manager whose connections never touch the network. Every connection
+-- answers with the given raw HTTP response, and whatever is written to it is
+-- collected in the returned reference.
+fakeManager :: BS.ByteString -> IO (Manager, IORef BS.ByteString)
+fakeManager rawResponse = do
+  unread <- newIORef rawResponse
+  sent <- newIORef BS.empty
+  let connect =
+        HC.makeConnection
+          (atomicModifyIORef' unread (\bytes -> (BS.empty, bytes)))
+          (\bytes -> modifyIORef' sent (<> bytes))
+          (return ())
+      settings =
+        HC.managerSetProxy HC.noProxy $
+          HC.defaultManagerSettings {HC.managerRawConnection = return (\_ _ _ -> connect)}
+  mgr <- HC.newManager settings
+  return (mgr, sent)
+
+okResponse :: BS.ByteString
+okResponse = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 14\r\n\r\n{\"uuid\":\"abc\"}"
 
 parseSse :: [BS.ByteString] -> [SseEvent]
 parseSse = concat . snd . mapAccumL feedSse newSseParser
@@ -126,6 +149,90 @@ main = hspec $ do
       readIORef closed `shouldReturn` False
       events.closeStream
       readIORef closed `shouldReturn` True
+
+    it "should buffer the body as strict and lazy ByteString" $ do
+      decodeFake [] ["ab", "cd"] `shouldReturn` ("abcd" :: BS.ByteString)
+      decodeFake [] ["ab", "cd"] `shouldReturn` ("abcd" :: LBS.ByteString)
+
+    it "should drain and close the stream for a unit body" $ do
+      (res, closed) <- fakeResponse [] ["ignored"]
+      fromResponse res `shouldReturn` ()
+      readIORef closed `shouldReturn` True
+
+  describe "ToRequestBody" $ do
+    it "should send ByteString bodies as application/octet-stream" $ do
+      toRequestBody ("raw" :: BS.ByteString) `shouldBe` "raw"
+      requestContentType ("raw" :: BS.ByteString) `shouldBe` Just "application/octet-stream"
+      toRequestBody ("raw" :: LBS.ByteString) `shouldBe` "raw"
+      requestContentType ("raw" :: LBS.ByteString) `shouldBe` Just "application/octet-stream"
+
+    it "should encode text bodies as UTF-8 text/plain" $ do
+      toRequestBody ("你好" :: T.Text) `shouldBe` T.encodeUtf8 "你好"
+      requestContentType ("你好" :: T.Text) `shouldBe` Just "text/plain; charset=utf-8"
+      toRequestBody ("你好" :: String) `shouldBe` T.encodeUtf8 "你好"
+      requestContentType ("你好" :: String) `shouldBe` Just "text/plain; charset=utf-8"
+
+    it "should encode ToJSON values as application/json" $ do
+      toRequestBody (Greeting "Hello!") `shouldBe` "{\"message\":\"Hello!\"}"
+      requestContentType (Greeting "Hello!") `shouldBe` Just "application/json"
+
+    it "should send an empty body without Content-Type for unit" $ do
+      toRequestBody () `shouldBe` ""
+      requestContentType () `shouldBe` Nothing
+
+    it "should url-encode forms from a list and from a ToForm instance" $ do
+      toRequestBody (Form [("q", "hello world"), ("lang", "zh-CN")]) `shouldBe` "q=hello%20world&lang=zh-CN"
+      toRequestBody (Form (Login "alice" "s3cret")) `shouldBe` "username=alice&password=s3cret"
+      requestContentType (Form (Login "alice" "s3cret")) `shouldBe` Just "application/x-www-form-urlencoded"
+
+  describe "sendWith" $ do
+    let userAgent = "User-Agent: haskell-request/" <> VERSION_request :: BS.ByteString
+
+    it "should write the request and decode the response" $ do
+      (mgr, sent) <- fakeManager okResponse
+      response <- sendWith mgr (Request POST "http://example.test/post?x=1" [("X-Test", "1")] (Greeting "Hello!")) :: IO (Response UUID)
+      response.status `shouldBe` 200
+      lookup "Content-Type" response.headers `shouldBe` Just "application/json"
+      uuid response.body `shouldBe` "abc"
+      request <- readIORef sent
+      request `shouldSatisfy` BS.isPrefixOf "POST /post?x=1 HTTP/1.1\r\n"
+      request `shouldSatisfy` BS.isInfixOf "Host: example.test\r\n"
+      request `shouldSatisfy` BS.isInfixOf "X-Test: 1\r\n"
+      request `shouldSatisfy` BS.isSuffixOf "\r\n\r\n{\"message\":\"Hello!\"}"
+
+    it "should add default User-Agent and Content-Type headers" $ do
+      (mgr, sent) <- fakeManager okResponse
+      _ <- sendWith mgr (Request POST "http://example.test/" [] (Greeting "Hello!")) :: IO (Response ())
+      request <- readIORef sent
+      request `shouldSatisfy` BS.isInfixOf (userAgent <> "\r\n")
+      request `shouldSatisfy` BS.isInfixOf "Content-Type: application/json\r\n"
+
+    it "should not override user provided User-Agent and Content-Type headers" $ do
+      (mgr, sent) <- fakeManager okResponse
+      let hdrs = [("user-agent", "custom-agent"), ("content-type", "text/x-custom")]
+      _ <- sendWith mgr (Request POST "http://example.test/" hdrs (Greeting "Hello!")) :: IO (Response ())
+      request <- readIORef sent
+      request `shouldSatisfy` BS.isInfixOf "user-agent: custom-agent\r\n"
+      request `shouldSatisfy` BS.isInfixOf "content-type: text/x-custom\r\n"
+      request `shouldSatisfy` not . BS.isInfixOf userAgent
+      request `shouldSatisfy` not . BS.isInfixOf "application/json"
+
+    it "should send credentials from the URL unless Authorization is provided" $ do
+      (mgr, sent) <- fakeManager okResponse
+      _ <- sendWith mgr (Request GET "http://alice:s3cret@example.test/" [] ()) :: IO (Response ())
+      readIORef sent >>= (`shouldSatisfy` BS.isInfixOf "Authorization: Basic YWxpY2U6czNjcmV0\r\n")
+      (mgr', sent') <- fakeManager okResponse
+      _ <- sendWith mgr' (Request GET "http://alice:s3cret@example.test/" [("authorization", "Bearer my-token")] ()) :: IO (Response ())
+      request <- readIORef sent'
+      request `shouldSatisfy` BS.isInfixOf "authorization: Bearer my-token\r\n"
+      request `shouldSatisfy` not . BS.isInfixOf "Basic YWxpY2U6czNjcmV0"
+
+    it "should return error statuses for raiseForStatus to throw" $ do
+      (mgr, _) <- fakeManager "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nnot found"
+      response <- sendWith mgr (Request GET "http://example.test/missing" [] ()) :: IO (Response String)
+      response.status `shouldBe` 404
+      response.body `shouldBe` "not found"
+      raiseForStatus response `shouldThrow` \(StatusException code _) -> code == 404
 
   describe "Network.HTTP.Request" $ do
     let defaultUserAgent = "haskell-request/" <> VERSION_request

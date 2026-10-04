@@ -49,6 +49,7 @@ test-suite spec
   build-depends:       base
                      , request
                      , hspec
+                     , http-client        >= 0.6.4 && < 0.8
                      , bytestring         >= 0.10.12 && < 0.13
                      , text               >= 2.0 && < 2.2
                      , aeson
