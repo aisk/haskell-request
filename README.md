@@ -62,7 +62,8 @@ data Request a = Request
 Built-in `ToRequestBody` instances and their inferred `Content-Type`:
 
 - `()` → empty body, no Content-Type
-- `ByteString` / lazy `ByteString` / `Text` / `String` → `text/plain; charset=utf-8`
+- `ByteString` / lazy `ByteString` → `application/octet-stream`
+- `Text` / `String` → `text/plain; charset=utf-8`
 - Any type with a `ToJSON` instance → auto JSON encoding + `application/json`
 - `Form a` (where `a` has a `ToForm` instance) → URL-encoded + `application/x-www-form-urlencoded`
 

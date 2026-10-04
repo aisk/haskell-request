@@ -108,11 +108,11 @@ class ToRequestBody a where
 
 instance ToRequestBody BS.ByteString where
   toRequestBody = id
-  requestContentType _ = Just "text/plain; charset=utf-8"
+  requestContentType _ = Just "application/octet-stream"
 
 instance ToRequestBody LBS.ByteString where
   toRequestBody = LBS.toStrict
-  requestContentType _ = Just "text/plain; charset=utf-8"
+  requestContentType _ = Just "application/octet-stream"
 
 instance ToRequestBody T.Text where
   toRequestBody = T.encodeUtf8
