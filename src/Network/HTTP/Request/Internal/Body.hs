@@ -19,12 +19,12 @@ import Data.Aeson (AesonException (..), FromJSON, ToJSON, eitherDecode, encode)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.CaseInsensitive as CI
-import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Proxy (Proxy (..))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified Network.HTTP.Client as LowLevelClient
-import Network.HTTP.Request.Internal.Sse (findEventSep, parseSseBlock)
+import Network.HTTP.Request.Internal.Sse (feedSse, newSseParser)
 import Network.HTTP.Request.Internal.Types (Response (..), SseEvent, StreamBody (..))
 import qualified Network.HTTP.Types.Status as LowLevelStatus
 import Network.HTTP.Types.URI (renderSimpleQuery)
@@ -83,28 +83,21 @@ instance FromResponseBody (StreamBody SseEvent) where
 
   buildResponse llreq manager = do
     llres <- LowLevelClient.responseOpen llreq manager
-    bufRef <- newIORef BS.empty
+    stateRef <- newIORef (newSseParser, [])
     let status = LowLevelStatus.statusCode . LowLevelClient.responseStatus $ llres
         hdrs = map (\(k, v) -> (CI.original k, v)) (LowLevelClient.responseHeaders llres)
         readNext = do
-          buf <- readIORef bufRef
-          case findEventSep buf of
-            Just (blockEnd, afterSep) -> do
-              writeIORef bufRef (BS.drop afterSep buf)
-              case parseSseBlock (BS.take blockEnd buf) of
-                Just event -> return (Just event)
-                Nothing -> readNext
-            Nothing -> do
+          (parser, queued) <- readIORef stateRef
+          case queued of
+            event : rest -> do
+              writeIORef stateRef (parser, rest)
+              return (Just event)
+            [] -> do
               chunk <- LowLevelClient.brRead (LowLevelClient.responseBody llres)
               if BS.null chunk
-                then
-                  if BS.null buf
-                    then return Nothing
-                    else do
-                      writeIORef bufRef BS.empty
-                      return (parseSseBlock buf)
+                then return Nothing
                 else do
-                  modifyIORef bufRef (<> chunk)
+                  writeIORef stateRef (feedSse parser chunk)
                   readNext
     return $ Response status hdrs (StreamBody readNext (LowLevelClient.responseClose llres))
 

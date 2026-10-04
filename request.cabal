@@ -16,10 +16,10 @@ cabal-version:       >=1.10
 library
   hs-source-dirs:      src
   exposed-modules:     Network.HTTP.Request
+                     , Network.HTTP.Request.Internal.Sse
   other-modules:       Network.HTTP.Request.Internal.Auth
                      , Network.HTTP.Request.Internal.Body
                      , Network.HTTP.Request.Internal.Client
-                     , Network.HTTP.Request.Internal.Sse
                      , Network.HTTP.Request.Internal.Status
                      , Network.HTTP.Request.Internal.Types
   build-depends:       base               >= 4.16 && < 5

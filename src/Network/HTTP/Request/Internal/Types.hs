@@ -62,7 +62,7 @@ data SseEvent = SseEvent
     sseType :: Maybe T.Text,
     sseId :: Maybe T.Text
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 requestMethod :: Request a -> Method
 requestMethod (Request value _ _ _) = value
