@@ -312,6 +312,27 @@ sendWith   :: (ToRequestBody a, FromResponse b) => Manager -> Request a -> IO (R
 
 `Manager` is the same type as `Network.HTTP.Client.Manager`, re-exported for convenience. For deeper configuration (`ManagerSettings`, custom proxies, certificate pinning, etc.) import `Network.HTTP.Client` / `Network.HTTP.Client.TLS` directly and build a `Manager` however you need. `sendWith` accepts it as-is.
 
+### Timeouts
+
+Requests time out after 30 seconds by default, which is the `http-client` default. The timeout covers connecting and waiting for the response headers, not reading the body, so long-lived streams are not cut off. To change it, build a manager with a different `managerResponseTimeout` (in microseconds). This needs `http-client` and `http-client-tls` in your `build-depends`:
+
+```haskell
+import Network.HTTP.Request
+import qualified Network.HTTP.Client as HC
+import qualified Network.HTTP.Client.TLS as TLS
+
+main :: IO ()
+main = do
+  mgr <- HC.newManager TLS.tlsManagerSettings
+    { HC.managerResponseTimeout = HC.responseTimeoutMicro 5000000 }  -- 5 seconds
+  resp <- sendWith mgr (Request GET "https://api.example.com/things" [] ()) :: IO (Response String)
+  print resp.status
+```
+
+Use `HC.responseTimeoutNone` to disable the timeout. A timed out request throws `HttpExceptionRequest` with `ResponseTimeout` or `ConnectionTimeout`.
+
+To apply the same setting to `send` and the shortcut functions, install the manager globally with `TLS.setGlobalManager mgr`.
+
 ## Streaming Support
 
 For large responses or real-time data, you can stream the response body instead of buffering it all in memory.
