@@ -154,6 +154,18 @@ main = hspec $ do
       let req = bearerAuth "new-token" (Request GET "http://example.com" [("authorization", "old-token")] ())
       requestHeaders req `shouldBe` [("Authorization", "Bearer new-token")]
 
+    it "should send credentials from the URL as Basic Authorization" $ do
+      response <- get "https://alice:s3cret@postman-echo.com/get" :: IO (Response String)
+      responseStatus response `shouldBe` 200
+      responseBody response `shouldSatisfy` isInfixOf "Basic YWxpY2U6czNjcmV0"
+
+    it "should prefer a user provided Authorization header over URL credentials" $ do
+      let req = Request GET "https://alice:s3cret@postman-echo.com/get" [("authorization", "Bearer my-token")] ()
+      response <- send req :: IO (Response String)
+      responseStatus response `shouldBe` 200
+      responseBody response `shouldSatisfy` isInfixOf "Bearer my-token"
+      responseBody response `shouldSatisfy` not . isInfixOf "Basic YWxpY2U6czNjcmV0"
+
     it "should return the response unchanged when raiseForStatus sees a 2xx status" $ do
       let resp = Response { status = 200, headers = [("X-Test", "1")], body = "ok" :: String }
       checked <- raiseForStatus resp

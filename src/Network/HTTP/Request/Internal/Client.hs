@@ -58,10 +58,13 @@ toLowlevelRequest req = do
         if hasUserAgent
           then []
           else [("User-Agent", defaultUserAgent)]
+      newHeaders = map (\(k, v) -> (CI.mk k, v)) (headers ++ extraContentType ++ extraUserAgent)
+      -- Keep headers derived from the URL (e.g. credentials) unless overridden.
+      keptHeaders = filter (\(k, _) -> k `notElem` map fst newHeaders) (LowLevelClient.requestHeaders initReq)
   return $
     initReq
       { LowLevelClient.method = methodToByteString (requestMethod req),
-        LowLevelClient.requestHeaders = map (\(k, v) -> (CI.mk k, v)) (headers ++ extraContentType ++ extraUserAgent),
+        LowLevelClient.requestHeaders = keptHeaders ++ newHeaders,
         LowLevelClient.requestBody = LowLevelClient.RequestBodyBS (toRequestBody body)
       }
 
