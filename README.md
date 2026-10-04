@@ -228,6 +228,18 @@ patch  :: (ToRequestBody a, FromResponse b) => String -> a -> IO (Response b)
 
 These shortcuts' definitions are simple and direct. You are encouraged to add your own if the built-in does not match your use cases, like add custom headers in every request.
 
+## Query Parameters
+
+`addQuery` appends query parameters to a URL and takes care of the escaping:
+
+```haskell
+let url = "https://api.example.com/search" `addQuery` [("q", "haskell request"), ("page", "2")]
+response <- get url :: IO (Response String)
+-- GET https://api.example.com/search?q=haskell%20request&page=2
+```
+
+It is a plain `String -> [(Text, Text)] -> String` function, so it works with `Request` and every shortcut. Parameters already in the URL are kept.
+
 ## Authentication
 
 `basicAuth` builds the value of a Basic `Authorization` header. Put it in the request's header list yourself:

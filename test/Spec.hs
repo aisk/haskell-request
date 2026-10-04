@@ -234,6 +234,38 @@ main = hspec $ do
       response.body `shouldBe` "not found"
       raiseForStatus response `shouldThrow` \(StatusException code _) -> code == 404
 
+  describe "addQuery" $ do
+    it "should append parameters to a URL without a query" $ do
+      addQuery "https://example.com/search" [("q", "haskell"), ("page", "2")]
+        `shouldBe` "https://example.com/search?q=haskell&page=2"
+
+    it "should keep parameters already in the URL" $ do
+      addQuery "https://example.com/search?q=haskell" [("page", "2")]
+        `shouldBe` "https://example.com/search?q=haskell&page=2"
+      addQuery "https://example.com/search?" [("page", "2")]
+        `shouldBe` "https://example.com/search?page=2"
+      addQuery "https://example.com/search?q=haskell&" [("page", "2")]
+        `shouldBe` "https://example.com/search?q=haskell&page=2"
+
+    it "should keep the fragment at the end" $ do
+      addQuery "https://example.com/doc#intro" [("v", "1")]
+        `shouldBe` "https://example.com/doc?v=1#intro"
+      addQuery "https://example.com/doc?a=1#intro" [("v", "1")]
+        `shouldBe` "https://example.com/doc?a=1&v=1#intro"
+
+    it "should escape reserved and non-ASCII characters" $ do
+      addQuery "https://example.com/" [("q", "a b&c=d"), ("\20013\25991", "\20320\22909")]
+        `shouldBe` "https://example.com/?q=a%20b%26c%3Dd&%E4%B8%AD%E6%96%87=%E4%BD%A0%E5%A5%BD"
+
+    it "should leave the URL untouched when there are no parameters" $ do
+      addQuery "https://example.com/search" [] `shouldBe` "https://example.com/search"
+
+    it "should produce a URL that reaches the wire" $ do
+      (manager, sentRef) <- fakeManager "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n"
+      _ <- sendWith manager (Request GET (addQuery "http://example.com/search" [("q", "a b")]) [] ()) :: IO (Response BS.ByteString)
+      sent <- readIORef sentRef
+      BS.isPrefixOf "GET /search?q=a%20b HTTP/1.1" sent `shouldBe` True
+
   describe "Network.HTTP.Request" $ do
     let defaultUserAgent = "haskell-request/" <> VERSION_request
 

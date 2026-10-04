@@ -17,6 +17,7 @@ module Network.HTTP.Request
     StatusException (..),
     StreamBody (..),
     SseEvent (..),
+    addQuery,
     basicAuth,
     bufferResponse,
     decodeResponse,
@@ -61,6 +62,7 @@ import Network.HTTP.Request.Internal.Client
     send,
     sendWith,
   )
+import Network.HTTP.Request.Internal.Query (addQuery)
 import Network.HTTP.Request.Internal.Status
   ( StatusException (..),
     raiseForStatus,

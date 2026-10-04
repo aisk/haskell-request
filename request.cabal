@@ -24,6 +24,7 @@ library
                      , Network.HTTP.Request.Internal.Body
                      , Network.HTTP.Request.Internal.Charset
                      , Network.HTTP.Request.Internal.Client
+                     , Network.HTTP.Request.Internal.Query
                      , Network.HTTP.Request.Internal.Status
                      , Network.HTTP.Request.Internal.Types
   build-depends:       base               >= 4.16 && < 5
