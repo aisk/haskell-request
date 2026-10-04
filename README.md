@@ -372,4 +372,4 @@ Request is &copy; 2020-2026 by [AN Long](https://github.com/aisk).
 
 ### License
 
-Request is distributed by a [BSD license](https://github.com/aisk/request/tree/master/LICENSE).
+Request is distributed by a [BSD license](https://github.com/aisk/haskell-request/tree/master/LICENSE).

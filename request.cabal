@@ -2,7 +2,7 @@ name:                request
 version:             0.4.1.0
 synopsis:            High level HTTP client for haskell
 description:         HTTP client for haskell, inspired by requests and http-dispatch.
-homepage:            https://github.com/aisk/request#readme
+homepage:            https://github.com/aisk/haskell-request#readme
 license:             BSD3
 license-file:        LICENSE
 author:              An Long
@@ -36,7 +36,7 @@ library
 
 source-repository head
   type:     git
-  location: https://github.com/aisk/request
+  location: https://github.com/aisk/haskell-request
 
 test-suite spec
   type:                exitcode-stdio-1.0
