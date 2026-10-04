@@ -1,5 +1,5 @@
 name:                request
-version:             0.4.1.0
+version:             0.5.0.0
 synopsis:            High level HTTP client for haskell
 description:         HTTP client for haskell, inspired by requests and http-dispatch.
 homepage:            https://github.com/aisk/haskell-request#readme
