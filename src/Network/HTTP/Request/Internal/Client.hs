@@ -23,7 +23,7 @@ import qualified Network.HTTP.Client.TLS as LowLevelTLSClient
 import Network.HTTP.Request.Internal.Body (FromResponseBody (..), ToRequestBody (..))
 import Network.HTTP.Request.Internal.Types
   ( Method (..),
-    Request (..),
+    Request (Request),
     Response,
     requestBody,
     requestHeaders,
