@@ -4,7 +4,7 @@
 
 HTTP client for haskell, inspired by [requests](https://requests.readthedocs.io/) and [http-dispatch](https://github.com/owainlewis/http-dispatch).
 
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/aisk/request)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/aisk/haskell-request)
 
 ## Installation
 
