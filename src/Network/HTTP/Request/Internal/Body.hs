@@ -1,32 +1,38 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Network.HTTP.Request.Internal.Body
-  ( FromResponseBody (..),
+  ( FromResponse (..),
     ToRequestBody (..),
     ToForm (..),
     Form (..),
     ResponseBodyException (..),
+    bufferResponse,
+    decodeResponse,
   )
 where
 
-import Control.Exception (Exception, SomeException, throwIO, toException)
+import Control.Exception (Exception, finally, throwIO)
+import Control.Monad (void)
 import Data.Aeson (AesonException (..), FromJSON, ToJSON, eitherDecode, encode)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
-import qualified Data.CaseInsensitive as CI
 import Data.IORef (newIORef, readIORef, writeIORef)
-import Data.Proxy (Proxy (..))
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import qualified Network.HTTP.Client as LowLevelClient
+import Network.HTTP.Request.Internal.Charset (charsetFromHeaders, decodeText)
 import Network.HTTP.Request.Internal.Sse (feedSse, newSseParser)
-import Network.HTTP.Request.Internal.Types (Response (..), SseEvent, StreamBody (..))
-import qualified Network.HTTP.Types.Status as LowLevelStatus
+import Network.HTTP.Request.Internal.Types
+  ( Response (Response),
+    SseEvent,
+    StreamBody (..),
+    responseBody,
+    responseHeaders,
+    responseStatus,
+  )
 import Network.HTTP.Types.URI (renderSimpleQuery)
 
 newtype ResponseBodyException = ResponseBodyException String
@@ -34,73 +40,74 @@ newtype ResponseBodyException = ResponseBodyException String
 
 instance Exception ResponseBodyException
 
-class FromResponseBody a where
-  fromResponseBody :: LBS.ByteString -> Either String a
+class FromResponse a where
+  -- | Build the body value from a response whose body has not been read yet.
+  -- An instance that does not hand the stream over to the caller must close
+  -- it, which 'bufferResponse' and 'decodeResponse' do.
+  fromResponse :: Response (StreamBody BS.ByteString) -> IO a
 
-  responseBodyException :: proxy a -> String -> SomeException
-  responseBodyException _ = toException . ResponseBodyException
+-- | Read the whole body into memory and close the stream.
+bufferResponse :: Response (StreamBody BS.ByteString) -> IO (Response LBS.ByteString)
+bufferResponse res = do
+  chunks <- readAll `finally` closeStream stream
+  return $ Response (responseStatus res) (responseHeaders res) (LBS.fromChunks chunks)
+  where
+    stream = responseBody res
+    readAll = readNext stream >>= maybe (return []) (\chunk -> (chunk :) <$> readAll)
 
-  buildResponse :: LowLevelClient.Request -> LowLevelClient.Manager -> IO (Response a)
-  buildResponse llreq manager = do
-    llres <- LowLevelClient.httpLbs llreq manager
-    case fromLowLevelResponse llres of
-      Right res -> return res
-      Left err -> throwIO (responseBodyException (Proxy :: Proxy a) err)
+-- | Buffer the response and decode it with a pure function, throwing
+-- 'ResponseBodyException' on failure.
+decodeResponse :: (Response LBS.ByteString -> Either String a) -> Response (StreamBody BS.ByteString) -> IO a
+decodeResponse decode res =
+  bufferResponse res >>= either (throwIO . ResponseBodyException) return . decode
 
-instance FromResponseBody BS.ByteString where
-  fromResponseBody = Right . LBS.toStrict
+instance FromResponse BS.ByteString where
+  fromResponse = fmap (LBS.toStrict . responseBody) . bufferResponse
 
-instance FromResponseBody LBS.ByteString where
-  fromResponseBody = Right
+instance FromResponse LBS.ByteString where
+  fromResponse = fmap responseBody . bufferResponse
 
-instance FromResponseBody T.Text where
-  fromResponseBody = Right . T.decodeUtf8Lenient . LBS.toStrict
+instance FromResponse T.Text where
+  fromResponse res = do
+    buffered <- bufferResponse res
+    decodeText (charsetFromHeaders (responseHeaders buffered)) (LBS.toStrict (responseBody buffered))
 
-instance FromResponseBody String where
-  fromResponseBody = Right . T.unpack . T.decodeUtf8Lenient . LBS.toStrict
+instance FromResponse String where
+  fromResponse = fmap T.unpack . fromResponse
 
-instance FromResponseBody () where
-  fromResponseBody _ = Right ()
+instance FromResponse () where
+  fromResponse = void . bufferResponse
 
-instance {-# OVERLAPPABLE #-} (FromJSON a) => FromResponseBody a where
-  fromResponseBody = eitherDecode
-  responseBodyException _ = toException . AesonException
+instance {-# OVERLAPPABLE #-} (FromJSON a) => FromResponse a where
+  fromResponse res = do
+    buffered <- bufferResponse res
+    either (throwIO . AesonException) return (eitherDecode (responseBody buffered))
 
-instance FromResponseBody (StreamBody BS.ByteString) where
-  fromResponseBody _ = Left "StreamBody must be built via buildResponse"
+instance FromResponse (StreamBody BS.ByteString) where
+  fromResponse = return . responseBody
 
-  buildResponse llreq manager = do
-    llres <- LowLevelClient.responseOpen llreq manager
-    let status = LowLevelStatus.statusCode . LowLevelClient.responseStatus $ llres
-        hdrs = map (\(k, v) -> (CI.original k, v)) (LowLevelClient.responseHeaders llres)
-        readNext = do
-          chunk <- LowLevelClient.brRead (LowLevelClient.responseBody llres)
-          return $ if BS.null chunk then Nothing else Just chunk
-    return $ Response status hdrs (StreamBody readNext (LowLevelClient.responseClose llres))
-
-instance FromResponseBody (StreamBody SseEvent) where
-  fromResponseBody _ = Left "StreamBody must be built via buildResponse"
-
-  buildResponse llreq manager = do
-    llres <- LowLevelClient.responseOpen llreq manager
+instance FromResponse (StreamBody SseEvent) where
+  fromResponse res = do
     stateRef <- newIORef (newSseParser, [])
-    let status = LowLevelStatus.statusCode . LowLevelClient.responseStatus $ llres
-        hdrs = map (\(k, v) -> (CI.original k, v)) (LowLevelClient.responseHeaders llres)
-        readNext = do
+    let stream = responseBody res
+        nextEvent = do
           (parser, queued) <- readIORef stateRef
           case queued of
             event : rest -> do
               writeIORef stateRef (parser, rest)
               return (Just event)
             [] -> do
-              chunk <- LowLevelClient.brRead (LowLevelClient.responseBody llres)
-              if BS.null chunk
-                then return Nothing
-                else do
+              mChunk <- readNext stream
+              case mChunk of
+                Nothing -> return Nothing
+                Just chunk -> do
                   writeIORef stateRef (feedSse parser chunk)
-                  readNext
-    return $ Response status hdrs (StreamBody readNext (LowLevelClient.responseClose llres))
+                  nextEvent
+    return $ StreamBody nextEvent (closeStream stream)
 
+-- TODO: When request bodies are reworked for file, multipart and streaming
+-- uploads, turn this into a single-method ToRequest class, mirroring
+-- FromResponse.
 class ToRequestBody a where
   toRequestBody :: a -> BS.ByteString
   requestContentType :: a -> Maybe BS.ByteString
@@ -141,16 +148,3 @@ newtype Form a = Form a
 instance (ToForm a) => ToRequestBody (Form a) where
   toRequestBody (Form a) = renderSimpleQuery False (toForm a)
   requestContentType _ = Just "application/x-www-form-urlencoded"
-
-fromLowLevelResponse :: (FromResponseBody a) => LowLevelClient.Response LBS.ByteString -> Either String (Response a)
-fromLowLevelResponse res =
-  let status = LowLevelStatus.statusCode . LowLevelClient.responseStatus $ res
-      headers = LowLevelClient.responseHeaders res
-   in case fromResponseBody $ LowLevelClient.responseBody res of
-        Right body ->
-          Right $
-            Response
-              status
-              (map (\(k, v) -> (CI.original k, v)) headers)
-              body
-        Left err -> Left err

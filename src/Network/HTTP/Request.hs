@@ -3,7 +3,7 @@
 module Network.HTTP.Request
   ( Header,
     Headers,
-    FromResponseBody (..),
+    FromResponse (..),
     ToRequestBody (..),
     ToForm (..),
     Form (..),
@@ -18,6 +18,8 @@ module Network.HTTP.Request
     StreamBody (..),
     SseEvent (..),
     basicAuth,
+    bufferResponse,
+    decodeResponse,
     get,
     delete,
     patch,
@@ -41,10 +43,12 @@ import Network.HTTP.Client (HttpException (..), HttpExceptionContent (..))
 import Network.HTTP.Request.Internal.Auth (basicAuth)
 import Network.HTTP.Request.Internal.Body
   ( Form (..),
-    FromResponseBody (..),
+    FromResponse (..),
     ResponseBodyException (..),
     ToForm (..),
     ToRequestBody (..),
+    bufferResponse,
+    decodeResponse,
   )
 import Network.HTTP.Request.Internal.Client
   ( Manager,

@@ -14,22 +14,25 @@ module Network.HTTP.Request.Internal.Client
   )
 where
 
+import Control.Exception (bracketOnError)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C
 import qualified Data.CaseInsensitive as CI
 import Network.HTTP.Client (Manager)
 import qualified Network.HTTP.Client as LowLevelClient
 import qualified Network.HTTP.Client.TLS as LowLevelTLSClient
-import Network.HTTP.Request.Internal.Body (FromResponseBody (..), ToRequestBody (..))
+import Network.HTTP.Request.Internal.Body (FromResponse (..), ToRequestBody (..))
 import Network.HTTP.Request.Internal.Types
   ( Method (..),
     Request (Request),
-    Response,
+    Response (Response),
+    StreamBody (StreamBody),
     requestBody,
     requestHeaders,
     requestMethod,
     requestUrl,
   )
+import qualified Network.HTTP.Types.Status as LowLevelStatus
 
 methodToByteString :: Method -> BS.ByteString
 methodToByteString DELETE = "DELETE"
@@ -71,27 +74,35 @@ toLowlevelRequest req = do
 newManager :: IO Manager
 newManager = LowLevelTLSClient.newTlsManager
 
-sendWith :: (ToRequestBody a, FromResponseBody b) => Manager -> Request a -> IO (Response b)
+sendWith :: (ToRequestBody a, FromResponse b) => Manager -> Request a -> IO (Response b)
 sendWith manager req = do
   llreq <- toLowlevelRequest req
-  buildResponse llreq manager
+  -- Close the connection if building the body fails before anyone owns it.
+  bracketOnError (LowLevelClient.responseOpen llreq manager) LowLevelClient.responseClose $ \llres -> do
+    let status = LowLevelStatus.statusCode (LowLevelClient.responseStatus llres)
+        headers = map (\(k, v) -> (CI.original k, v)) (LowLevelClient.responseHeaders llres)
+        readChunk = do
+          chunk <- LowLevelClient.brRead (LowLevelClient.responseBody llres)
+          return $ if BS.null chunk then Nothing else Just chunk
+        stream = StreamBody readChunk (LowLevelClient.responseClose llres)
+    Response status headers <$> fromResponse (Response status headers stream)
 
-send :: (ToRequestBody a, FromResponseBody b) => Request a -> IO (Response b)
+send :: (ToRequestBody a, FromResponse b) => Request a -> IO (Response b)
 send req = do
   manager <- LowLevelTLSClient.getGlobalManager
   sendWith manager req
 
-get :: (FromResponseBody a) => String -> IO (Response a)
+get :: (FromResponse a) => String -> IO (Response a)
 get url = send $ Request GET url [] ()
 
-delete :: (FromResponseBody a) => String -> IO (Response a)
+delete :: (FromResponse a) => String -> IO (Response a)
 delete url = send $ Request DELETE url [] ()
 
-post :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b)
+post :: (ToRequestBody a, FromResponse b) => String -> a -> IO (Response b)
 post url body = send $ Request POST url [] body
 
-put :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b)
+put :: (ToRequestBody a, FromResponse b) => String -> a -> IO (Response b)
 put url body = send $ Request PUT url [] body
 
-patch :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b)
+patch :: (ToRequestBody a, FromResponse b) => String -> a -> IO (Response b)
 patch url body = send $ Request PATCH url [] body
