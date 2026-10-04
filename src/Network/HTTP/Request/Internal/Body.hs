@@ -59,6 +59,9 @@ instance FromResponseBody T.Text where
 instance FromResponseBody String where
   fromResponseBody = Right . T.unpack . T.decodeUtf8Lenient . LBS.toStrict
 
+instance FromResponseBody () where
+  fromResponseBody _ = Right ()
+
 instance {-# OVERLAPPABLE #-} (FromJSON a) => FromResponseBody a where
   fromResponseBody = eitherDecode
   responseBodyException _ = toException . AesonException

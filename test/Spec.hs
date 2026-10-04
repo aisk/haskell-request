@@ -166,6 +166,11 @@ main = hspec $ do
       responseBody response `shouldSatisfy` isInfixOf "Bearer my-token"
       responseBody response `shouldSatisfy` not . isInfixOf "Basic YWxpY2U6czNjcmV0"
 
+    it "should ignore the response body when the response type is unit" $ do
+      response <- get "http://example.com" :: IO (Response ())
+      responseStatus response `shouldBe` 200
+      responseBody response `shouldBe` ()
+
     it "should return the response unchanged when raiseForStatus sees a 2xx status" $ do
       let resp = Response { status = 200, headers = [("X-Test", "1")], body = "ok" :: String }
       checked <- raiseForStatus resp
