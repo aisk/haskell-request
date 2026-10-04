@@ -15,6 +15,9 @@ cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
+  -- TODO: Internal.Sse is exposed only so the test suite can import it. Keep it
+  -- this way for now. Once internal sublibraries are mature enough, upgrade to
+  -- cabal-version 3.0 and move the Internal modules into a private sublibrary.
   exposed-modules:     Network.HTTP.Request
                      , Network.HTTP.Request.Internal.Sse
   other-modules:       Network.HTTP.Request.Internal.Auth
