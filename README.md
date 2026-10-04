@@ -252,6 +252,23 @@ data StatusException = StatusException Int Headers
 raiseForStatus :: Response a -> IO (Response a)
 ```
 
+## Network Errors
+
+Connection failures, timeouts and invalid URLs are reported as `http-client`'s `HttpException`. It is re-exported together with `HttpExceptionContent`, so you can catch it without depending on `http-client` yourself:
+
+```haskell
+import Control.Exception (try)
+import Network.HTTP.Request
+
+main :: IO ()
+main = do
+  result <- try (get "https://example.invalid") :: IO (Either HttpException (Response String))
+  case result of
+    Left (HttpExceptionRequest _ content) -> print content   -- e.g. ConnectionFailure ...
+    Left (InvalidUrlException url reason) -> putStrLn (url <> ": " <> reason)
+    Right resp -> print resp.status
+```
+
 ## Without Language Extensions
 
 If you prefer not to use the language extensions, you can still use the library with the traditional syntax:
