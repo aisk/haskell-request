@@ -10,7 +10,9 @@ module Main where
 import Data.Aeson (FromJSON, ToJSON)
 import Data.List (isInfixOf)
 import GHC.Generics (Generic)
+import Data.List (mapAccumL)
 import Network.HTTP.Request
+import Network.HTTP.Request.Internal.Sse (feedSse, newSseParser)
 import Test.Hspec
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
@@ -38,8 +40,36 @@ instance ToForm Login where
              , ("password", T.encodeUtf8 l.password)
              ]
 
+parseSse :: [BS.ByteString] -> [SseEvent]
+parseSse = concat . snd . mapAccumL feedSse newSseParser
+
 main :: IO ()
 main = hspec $ do
+  describe "SSE parser" $ do
+    it "should parse events with data, event and id fields" $ do
+      parseSse ["event: greet\nid: 1\ndata: hello\n\ndata: world\n\n"]
+        `shouldBe` [SseEvent "hello" (Just "greet") (Just "1"), SseEvent "world" Nothing Nothing]
+
+    it "should join multiple data lines and skip comments" $ do
+      parseSse [": ping\ndata: line1\ndata:line2\n\n"]
+        `shouldBe` [SseEvent "line1\nline2" Nothing Nothing]
+
+    it "should accept CR, LF and CRLF line endings" $ do
+      parseSse ["data: a\r\n\r\ndata: b\r\rdata: c\n\n"]
+        `shouldBe` [SseEvent "a" Nothing Nothing, SseEvent "b" Nothing Nothing, SseEvent "c" Nothing Nothing]
+
+    it "should parse events split across chunks" $ do
+      parseSse ["da", "ta: he", "llo\r", "\n\r", "\ndata: wor", "ld\n", "\n"]
+        `shouldBe` [SseEvent "hello" Nothing Nothing, SseEvent "world" Nothing Nothing]
+
+    it "should strip a leading UTF-8 BOM" $ do
+      parseSse ["\xEF\xBB\xBF" <> "data: hi\n\n"] `shouldBe` [SseEvent "hi" Nothing Nothing]
+      parseSse ["\xEF\xBB", "\xBF" <> "data: hi\n\n"] `shouldBe` [SseEvent "hi" Nothing Nothing]
+
+    it "should discard an incomplete event at the end of the stream" $ do
+      parseSse ["data: done\n\ndata: partial\n"] `shouldBe` [SseEvent "done" Nothing Nothing]
+
+
   describe "Network.HTTP.Request" $ do
     let defaultUserAgent = "haskell-request/" <> VERSION_request
 
