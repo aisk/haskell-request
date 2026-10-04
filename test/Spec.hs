@@ -218,6 +218,16 @@ main = hspec $ do
             raiseForStatus resp
       sendAndRaise `shouldThrow` \(StatusException code _) -> code == 500
 
+    it "should throw HttpException when the connection fails" $ do
+      (get "http://localhost:1" :: IO (Response String)) `shouldThrow` \case
+        HttpExceptionRequest _ (ConnectionFailure _) -> True
+        _ -> False
+
+    it "should throw HttpException for an invalid URL" $ do
+      (get "not a url" :: IO (Response String)) `shouldThrow` \case
+        InvalidUrlException _ _ -> True
+        _ -> False
+
     it "should send with a user-provided manager" $ do
       mgr <- newManager
       response <- sendWith mgr (Request GET "http://example.com" [] ()) :: IO (Response String)

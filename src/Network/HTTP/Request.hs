@@ -8,6 +8,8 @@ module Network.HTTP.Request
     ToForm (..),
     Form (..),
     Manager,
+    HttpException (..),
+    HttpExceptionContent (..),
     Method (..),
     Request (..),
     Response (..),
@@ -35,6 +37,7 @@ module Network.HTTP.Request
   )
 where
 
+import Network.HTTP.Client (HttpException (..), HttpExceptionContent (..))
 import Network.HTTP.Request.Internal.Auth (basicAuth)
 import Network.HTTP.Request.Internal.Body
   ( Form (..),
