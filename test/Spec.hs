@@ -144,6 +144,11 @@ main = hspec $ do
       responseStatus response `shouldBe` 200
       responseBody response `shouldSatisfy` isInfixOf "application/json"
 
+    it "should post ByteString body as application/octet-stream" $ do
+      response <- post "https://postman-echo.com/post" ("Hello!" :: BS.ByteString) :: IO (Response String)
+      responseStatus response `shouldBe` 200
+      responseBody response `shouldSatisfy` isInfixOf "application/octet-stream"
+
     it "should post url-encoded form from a list" $ do
       response <- post "https://postman-echo.com/post" (Form [("foo", "bar"), ("baz", "qux")]) :: IO (Response String)
       responseStatus response `shouldBe` 200
