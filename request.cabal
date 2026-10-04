@@ -30,7 +30,7 @@ library
                      , http-client        >= 0.6.4 && < 0.8
                      , http-types         >= 0.12.3 && < 0.13
                      , http-client-tls    >= 0.3.5 && < 0.4
-                     , text               >= 1.2.4 && < 2.2
+                     , text               >= 2.0 && < 2.2
   default-language:    Haskell2010
 
 source-repository head
@@ -45,6 +45,6 @@ test-suite spec
                      , request
                      , hspec
                      , bytestring         >= 0.10.12 && < 0.13
-                     , text               >= 1.2.4 && < 2.2
+                     , text               >= 2.0 && < 2.2
                      , aeson
   default-language:    Haskell2010
