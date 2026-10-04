@@ -22,6 +22,7 @@ library
                      , Network.HTTP.Request.Internal.Sse
   other-modules:       Network.HTTP.Request.Internal.Auth
                      , Network.HTTP.Request.Internal.Body
+                     , Network.HTTP.Request.Internal.Charset
                      , Network.HTTP.Request.Internal.Client
                      , Network.HTTP.Request.Internal.Status
                      , Network.HTTP.Request.Internal.Types

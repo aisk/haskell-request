@@ -7,7 +7,8 @@
 
 module Main where
 
-import Data.Aeson (FromJSON, ToJSON)
+import Data.Aeson (AesonException (..), FromJSON, ToJSON)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef, writeIORef)
 import Data.List (isInfixOf)
 import GHC.Generics (Generic)
 import Data.List (mapAccumL)
@@ -40,6 +41,20 @@ instance ToForm Login where
              , ("password", T.encodeUtf8 l.password)
              ]
 
+-- | A 200 response whose body yields the given chunks, plus a flag telling
+-- whether the stream has been closed.
+fakeResponse :: Headers -> [BS.ByteString] -> IO (Response (StreamBody BS.ByteString), IORef Bool)
+fakeResponse hdrs chunks = do
+  remaining <- newIORef chunks
+  closed <- newIORef False
+  let next = atomicModifyIORef' remaining $ \case
+        [] -> ([], Nothing)
+        chunk : rest -> (rest, Just chunk)
+  return (Response 200 hdrs (StreamBody next (writeIORef closed True)), closed)
+
+decodeFake :: (FromResponse a) => Headers -> [BS.ByteString] -> IO a
+decodeFake hdrs chunks = fakeResponse hdrs chunks >>= fromResponse . fst
+
 parseSse :: [BS.ByteString] -> [SseEvent]
 parseSse = concat . snd . mapAccumL feedSse newSseParser
 
@@ -69,6 +84,48 @@ main = hspec $ do
     it "should discard an incomplete event at the end of the stream" $ do
       parseSse ["data: done\n\ndata: partial\n"] `shouldBe` [SseEvent "done" Nothing Nothing]
 
+  describe "FromResponse" $ do
+    it "should decode text with the charset from the Content-Type header" $ do
+      let gbk = ["\xC4\xE3", "\xBA\xC3"]
+      decodeFake [("content-type", "text/html; charset=GBK")] gbk `shouldReturn` ("你好" :: T.Text)
+      decodeFake [("Content-Type", "text/html; boundary=x; Charset=\"gbk\"")] gbk `shouldReturn` ("你好" :: String)
+      decodeFake [("Content-Type", "text/plain; charset=ISO-8859-1")] ["caf\xE9"] `shouldReturn` ("café" :: T.Text)
+
+    it "should decode text as UTF-8 when the charset is missing or unknown" $ do
+      let utf8 = [T.encodeUtf8 "你好"]
+      decodeFake [] utf8 `shouldReturn` ("你好" :: T.Text)
+      decodeFake [("Content-Type", "text/html")] utf8 `shouldReturn` ("你好" :: T.Text)
+      decodeFake [("Content-Type", "text/html; charset=no-such-charset")] utf8 `shouldReturn` ("你好" :: T.Text)
+
+    it "should replace invalid input instead of failing" $ do
+      decodeFake [("Content-Type", "text/html; charset=GBK")] ["a\xFF"] `shouldReturn` ("a\xFFFD" :: T.Text)
+
+    it "should join chunks and close the stream for buffered bodies" $ do
+      (res, closed) <- fakeResponse [] ["{\"uuid\":", "\"abc\"}"]
+      decoded <- fromResponse res
+      uuid decoded `shouldBe` "abc"
+      readIORef closed `shouldReturn` True
+
+    it "should throw AesonException and close the stream when JSON decoding fails" $ do
+      (res, closed) <- fakeResponse [] ["<html>"]
+      (fromResponse res :: IO UUID) `shouldThrow` \(AesonException _) -> True
+      readIORef closed `shouldReturn` True
+
+    it "should throw ResponseBodyException when decodeResponse fails" $ do
+      (res, closed) <- fakeResponse [] ["oops"]
+      let decode r = if responseStatus r == 200 then Left "bad body" else Right ()
+      decodeResponse decode res `shouldThrow` \(ResponseBodyException msg) -> msg == "bad body"
+      readIORef closed `shouldReturn` True
+
+    it "should leave the stream open for streaming bodies" $ do
+      (res, closed) <- fakeResponse [] ["data: a\n\nda", "ta: b\n\n"]
+      events <- fromResponse res :: IO (StreamBody SseEvent)
+      events.readNext `shouldReturn` Just (SseEvent "a" Nothing Nothing)
+      events.readNext `shouldReturn` Just (SseEvent "b" Nothing Nothing)
+      events.readNext `shouldReturn` Nothing
+      readIORef closed `shouldReturn` False
+      events.closeStream
+      readIORef closed `shouldReturn` True
 
   describe "Network.HTTP.Request" $ do
     let defaultUserAgent = "haskell-request/" <> VERSION_request

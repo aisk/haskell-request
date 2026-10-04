@@ -89,14 +89,16 @@ data Response a = Response
   } deriving (Show)
 ```
 
-The response body type `a` can be any type that implements the `FromResponseBody` constraint, allowing flexible handling of response data. Built-in supported types include `String`, `ByteString`, `Text`, and any type with a `FromJSON` instance.
+The response body type `a` can be any type that implements the `FromResponse` constraint, allowing flexible handling of response data. Built-in supported types include `String`, `ByteString`, `Text`, and any type with a `FromJSON` instance.
+
+`String` and `Text` bodies are decoded with the charset declared in the response's `Content-Type` header, so a `text/html; charset=GBK` page comes back as proper text. Invalid bytes are replaced with U+FFFD. When the charset is missing or not known to the system, the body is decoded as UTF-8.
 
 ### send
 
 Once you have constructed your own `Request` record, you can call the `send` function to send it to the server. It automatically serializes the body and infers the `Content-Type` header. The `send` function's type is:
 
 ```haskell
-send :: (ToRequestBody a, FromResponseBody b) => Request a -> IO (Response b)
+send :: (ToRequestBody a, FromResponse b) => Request a -> IO (Response b)
 ```
 
 ## JSON Support
@@ -217,11 +219,11 @@ The `Form` newtype is required to disambiguate the form-encoding path from JSON.
 As you expected, there are some shortcuts for the most used scenarios.
 
 ```haskell
-get    :: (FromResponseBody a) => String -> IO (Response a)
-delete :: (FromResponseBody a) => String -> IO (Response a)
-post   :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b)
-put    :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b)
-patch  :: (ToRequestBody a, FromResponseBody b) => String -> a -> IO (Response b)
+get    :: (FromResponse a) => String -> IO (Response a)
+delete :: (FromResponse a) => String -> IO (Response a)
+post   :: (ToRequestBody a, FromResponse b) => String -> a -> IO (Response b)
+put    :: (ToRequestBody a, FromResponse b) => String -> a -> IO (Response b)
+patch  :: (ToRequestBody a, FromResponse b) => String -> a -> IO (Response b)
 ```
 
 These shortcuts' definitions are simple and direct. You are encouraged to add your own if the built-in does not match your use cases, like add custom headers in every request.
@@ -305,7 +307,7 @@ The two new pieces of API:
 
 ```haskell
 newManager :: IO Manager
-sendWith   :: (ToRequestBody a, FromResponseBody b) => Manager -> Request a -> IO (Response b)
+sendWith   :: (ToRequestBody a, FromResponse b) => Manager -> Request a -> IO (Response b)
 ```
 
 `Manager` is the same type as `Network.HTTP.Client.Manager`, re-exported for convenience. For deeper configuration (`ManagerSettings`, custom proxies, certificate pinning, etc.) import `Network.HTTP.Client` / `Network.HTTP.Client.TLS` directly and build a `Manager` however you need. `sendWith` accepts it as-is.
@@ -374,6 +376,39 @@ main = do
 
 - `readNext :: IO (Maybe a)` — reads the next chunk or event; returns `Nothing` when the stream ends
 - `closeStream :: IO ()` — closes the underlying connection
+
+## Custom Response Types
+
+To support your own response body type, implement `FromResponse`. Its single method receives the response before the body has been read:
+
+```haskell
+class FromResponse a where
+  fromResponse :: Response (StreamBody ByteString) -> IO a
+```
+
+Most instances just want the whole body. `decodeResponse` buffers it, closes the connection and runs a pure decoder that can also look at the status and headers. A `Left` is thrown as `ResponseBodyException`:
+
+```haskell
+import Network.HTTP.Request
+import qualified Data.ByteString.Lazy.Char8 as LBS
+
+newtype Lines = Lines [LBS.ByteString]
+
+instance FromResponse Lines where
+  fromResponse = decodeResponse $ \res ->
+    if res.status < 400
+      then Right (Lines (LBS.lines res.body))
+      else Left ("unexpected status " <> show res.status)
+```
+
+The two helpers:
+
+```haskell
+bufferResponse :: Response (StreamBody ByteString) -> IO (Response LazyByteString)
+decodeResponse :: (Response LazyByteString -> Either String a) -> Response (StreamBody ByteString) -> IO a
+```
+
+Use `bufferResponse` when you need IO or want to throw your own exception type. An instance that neither calls these helpers nor returns the stream to the caller must call `closeStream` itself.
 
 ## API Documents
 
